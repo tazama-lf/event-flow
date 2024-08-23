@@ -15,6 +15,8 @@ export interface IConfig {
   maxCPU: number;
   env: string;
   functionName: string;
+  ruleName: string;
+  ruleVersion: string;
   apm: {
     secretToken: string;
     serviceName: string;
@@ -43,6 +45,8 @@ export interface IConfig {
 
 export const configuration: IConfig = {
   maxCPU: parseInt(process.env.MAX_CPU!, 10) || 1,
+  ruleName: process.env.RULE_NAME!,
+  ruleVersion: process.env.RULE_VERSION!,
   apm: {
     serviceName: process.env.APM_SERVICE_NAME!,
     url: process.env.APM_URL!,
@@ -68,7 +72,9 @@ export const configuration: IConfig = {
   },
   redis: {
     db: parseInt(process.env.REDIS_DB!, 10) || 0,
-    servers: JSON.parse(process.env.REDIS_SERVERS! || '[{"hostname": "127.0.0.1", "port":6379}]'),
+    servers: JSON.parse(
+      process.env.REDIS_SERVERS! || '[{"hostname": "127.0.0.1", "port":6379}]',
+    ),
     password: process.env.REDIS_AUTH!,
     isCluster: process.env.REDIS_IS_CLUSTER === 'true',
   },

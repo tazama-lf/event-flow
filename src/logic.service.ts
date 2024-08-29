@@ -90,7 +90,13 @@ export const determineOutcome = async (
     prcgTm: 0,
   };
 
-  if (conditions.some((cond) => cond.condTp === 'non-overridable-block')) {
+  if (
+    conditions.some(
+      (cond) =>
+        cond.condTp === 'non-overridable-block' ||
+        cond.condTp === 'overridable-block',
+    )
+  ) {
     ruleResult.subRuleRef = 'block';
 
     if (!config.suppressAlerts) {
@@ -111,11 +117,6 @@ export const determineOutcome = async (
 
   if (conditions.some((cond) => cond.condTp === 'override')) {
     ruleResult.subRuleRef = 'override';
-    return ruleResult;
-  }
-
-  if (conditions.some((cond) => cond.condTp === 'overridable-block')) {
-    ruleResult.subRuleRef = 'block';
     return ruleResult;
   }
 

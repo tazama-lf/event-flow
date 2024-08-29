@@ -292,7 +292,7 @@ describe('Event Flow', () => {
       };
 
       await handleTransaction(req);
-      expect(responseSpy).toHaveBeenCalledTimes(1); // alert skipped
+      expect(responseSpy).toHaveBeenCalledTimes(2); // + alert for block
       expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
     });
 

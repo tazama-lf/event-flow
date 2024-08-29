@@ -1,104 +1,120 @@
 import {
-  EntityCondition,
-  RuleResult,
+  type RuleRequest,
+  type RuleResult,
 } from '@frmscoe/frms-coe-lib/lib/interfaces';
-import { loggerService, server } from '.';
-import { configuration } from './config';
+import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
+import { CalculateDuration } from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
+import { type ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
+import { databaseManager, loggerService, server } from '.';
+import { config } from './config';
 
-const calculateDuration = (startTime: bigint): number => {
-  const endTime: bigint = process.hrtime.bigint();
-  return Number(endTime - startTime);
-};
-
-export const handleTransaction = async (transaction: any): Promise<void> => {
-  const cacheID = `${transaction.FIToFIPmtSts.TxInfAndSts}`;
+export const handleTransaction = async (req: unknown): Promise<void> => {
   const startTime = process.hrtime.bigint();
+  const msg = req as RuleRequest;
 
-  //Get Entity Conditions
+  const request = {
+    transaction: msg.transaction,
+    networkMap: msg.networkMap,
+    DataCache: msg.DataCache,
+    metaData: msg.metaData,
+  };
 
-  //Get Account Conditions
-  
-  let conditions: EntityCondition[] = [
-    {
-      evtTp: ['pacs.008.01.10'],
-      condTp: 'overridable-block',
-      prsptv: 'both',
-      incptnDtTm: '2024-08-15T24:00:00.999Z',
-      xprtnDtTm: '2024-08-16T24:00:00.999Z',
-      condRsn: 'R001',
-      ntty: {
-        id: '+27733161225',
-        schmeNm: {
-          prtry: 'MSISDN',
-        },
-      },
-      forceCret: true,
-      usr: 'bob',
-      creDtTm: '2024-08-15T09:31:30.806Z',
-    },
-    {
-      evtTp: ['pacs.008.01.10'],
-      condTp: 'overridable-block',
-      prsptv: 'both',
-      incptnDtTm: '2024-08-15T24:00:00.999Z',
-      xprtnDtTm: '2024-08-16T24:00:00.999Z',
-      condRsn: 'R001',
-      ntty: {
-        id: '+27733161225',
-        schmeNm: {
-          prtry: 'MSISDN',
-        },
-      },
-      forceCret: true,
-      usr: 'bob',
-      creDtTm: '2024-08-15T09:32:56.681Z',
-    },
-  ];
+  let conditions = (
+    await Promise.all([
+      databaseManager._redisClient.getBuffer(
+        `entities/${request.DataCache.cdtrId}`,
+      ),
+      databaseManager._redisClient.getBuffer(
+        `entities/${request.DataCache.dbtrId}`,
+      ),
+      databaseManager._redisClient.getBuffer(
+        `accounts/${request.DataCache.cdtrAcctId}`,
+      ),
+      databaseManager._redisClient.getBuffer(
+        `accounts/${request.DataCache.dbtrAcctId}`,
+      ),
+    ])
+  )
+    .map((dec) => {
+      if (dec && dec.length > 0) {
+        try {
+          const decode = decodeConditionsBuffer(dec);
+          return decode?.conditions;
+        } catch (err) {
+          loggerService.error('Could not decode a condition');
+        }
+      }
+      return null;
+    })
+    .filter((x) => x)
+    .flat();
 
-  //Filter out expired conditions
-  conditions = conditions.filter(cond => new Date(cond.xprtnDtTm!) < new Date());
+  // Filter out expired conditions
+  conditions = conditions.filter((cond) => {
+    return new Date(cond!.xprtnDtTm!) > new Date();
+  });
 
-  //Filter out conditions not fit for transaction type (Won't this always be Pacs002?)
-  conditions = conditions.filter(cond => cond.evtTp.includes('pacs.008.01.10'))
-
+  // Filter out conditions not fit for transaction type
+  conditions = conditions.filter((cond) =>
+    cond?.prsptvs.some((p) => {
+      return p.evtTp.some((evt) => {
+        return evt === 'pacs.002.001.12' || evt === 'all';
+      });
+    }),
+  );
 
   //Determine outcome and calculate duration
-  let ruleResult = await determineOutcome(conditions);
-  ruleResult.prcgTm = calculateDuration(startTime);
+  const ruleResult = await determineOutcome(conditions as ConditionDetails[]);
+  ruleResult.prcgTm = CalculateDuration(startTime);
 
-  server.handleResponse(ruleResult);
+  try {
+    await server.handleResponse({ ...request, ruleResult });
+  } catch (error) {
+    const failMessage = 'Failed to send to Typology Processor.';
+    loggerService.error(
+      failMessage,
+      error,
+      `${config.ruleName}@${config.ruleVersion}`,
+      config.functionName,
+    );
+  }
 };
 
-const determineOutcome = async (
-  conditions: EntityCondition[]
+export const determineOutcome = async (
+  conditions: ConditionDetails[],
 ): Promise<RuleResult> => {
-  let ruleResult: RuleResult = {
-    id: `${configuration.ruleName}@${configuration.ruleVersion}`,
+  const ruleResult: RuleResult = {
+    id: `${config.ruleName}@${config.ruleVersion}`,
     cfg: 'none',
     subRuleRef: 'none',
     prcgTm: 0,
   };
 
-  if (conditions.filter((cond) => cond.condTp === 'non-overridable-block')) {
+  if (conditions.some((cond) => cond.condTp === 'non-overridable-block')) {
     ruleResult.subRuleRef = 'block';
 
-    if (!configuration.suppressAlerts) {
+    if (!config.suppressAlerts) {
       server
-        .handleResponse({ ...ruleResult }, [configuration.cmsProducer])
+        .handleResponse({ ...ruleResult }, [config.cmsProducer])
         .catch((error) => {
-          loggerService.error('Error while sending Typology result to CMS');
+          loggerService.error(
+            'Error while sending Typology result to CMS',
+            error as Error,
+            ruleResult.id,
+            config.functionName,
+          );
         });
     }
 
     return ruleResult;
   }
 
-  if (conditions.filter((cond) => cond.condTp === 'override-block')) {
+  if (conditions.some((cond) => cond.condTp === 'override')) {
     ruleResult.subRuleRef = 'override';
     return ruleResult;
   }
 
-  if (conditions.filter((cond) => cond.condTp === 'overridable-block')) {
+  if (conditions.some((cond) => cond.condTp === 'overridable-block')) {
     ruleResult.subRuleRef = 'block';
     return ruleResult;
   }

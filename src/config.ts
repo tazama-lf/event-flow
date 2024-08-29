@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 // config settings, env variables
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -21,7 +20,7 @@ export interface IConfig {
     secretToken: string;
     serviceName: string;
     url: string;
-    active: string;
+    active: boolean;
   };
   db: {
     name: string;
@@ -43,7 +42,7 @@ export interface IConfig {
   suppressAlerts: boolean;
 }
 
-export const configuration: IConfig = {
+export const config: IConfig = {
   maxCPU: parseInt(process.env.MAX_CPU!, 10) || 1,
   ruleName: process.env.RULE_NAME!,
   ruleVersion: process.env.RULE_VERSION!,
@@ -51,7 +50,7 @@ export const configuration: IConfig = {
     serviceName: process.env.APM_SERVICE_NAME!,
     url: process.env.APM_URL!,
     secretToken: process.env.APM_SECRET_TOKEN!,
-    active: process.env.APM_ACTIVE!,
+    active: process.env.APM_ACTIVE === 'true',
   },
   cmsProducer: process.env.CMS_PRODUCER!,
   db: {
@@ -64,7 +63,7 @@ export const configuration: IConfig = {
     cacheTTL: parseInt(process.env.CACHE_TTL!, 10),
   },
   env: process.env.NODE_ENV!,
-  functionName: process.env.FUNCTION_NAME!,
+  functionName: process.env.FUNCTION_NAME! || 'EFRuP',
   logger: {
     logstashHost: process.env.LOGSTASH_HOST!,
     logstashPort: parseInt(process.env.LOGSTASH_PORT ?? '0', 10),

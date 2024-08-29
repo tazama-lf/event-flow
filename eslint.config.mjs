@@ -3,14 +3,14 @@ import stylistic from '@stylistic/eslint-plugin';
 import tsEslint from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import eslintStandard from 'eslint-config-love';
-import eslintPluginEslintComments from 'eslint-plugin-eslint-comments';
+import eslintPluginEslintComments from '@eslint-community/eslint-plugin-eslint-comments';
 
 export default [
   {
     files: ['**/*.ts'],
     plugins: {
       ...eslintStandard.plugins,
-      ['eslint-comments']: eslintPluginEslintComments,
+      ['@eslint-community/eslint-comments']: eslintPluginEslintComments,
       ['@typescript-eslint']: tsEslint,
       ['@stylistic']: stylistic,
     },
@@ -26,8 +26,8 @@ export default [
     rules: {
       ...eslintStandard.rules,
       ...eslintPluginEslintComments.configs.recommended.rules,
-      'eslint-comments/require-description': ['warn', {'ignore': []}],
-      'eslint-comments/disable-enable-pair': 'warn',
+      '@eslint-community/eslint-comments/require-description': ['warn', {'ignore': []}],
+      '@eslint-community/eslint-comments/disable-enable-pair': 'warn',
       'no-console': 'warn',
       '@typescript-eslint/restrict-template-expressions': 'error',
       '@typescript-eslint/no-non-null-assertion': 'off',

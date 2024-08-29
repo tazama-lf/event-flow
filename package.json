@@ -2,28 +2,53 @@
   "name": "event-flow",
   "version": "1.0.0",
   "description": "Event flow processor for tazama",
-  "main": "src/index.ts",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "keywords": [
+    "tazama"
+  ],
+  "homepage": "https://github.com/tazama-lf/event-flow#readme",
+  "bugs": {
+    "url": "https://github.com/tazama-lf/event-flow/issues"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tazama-lf/event-flow.git"
   },
-  "keywords": [
-    "tazama"
-  ],
-  "author": "Jean-Pierre Nell",
   "license": "Apache-2.0",
-  "bugs": {
-    "url": "https://github.com/tazama-lf/event-flow/issues"
+  "author": "Jean-Pierre Nell",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "start": "node -r dotenv/config build/index.js",
+    "fix": "npm run fix:prettier && npm run fix:eslint",
+    "fix:eslint": "eslint --fix \"**/*.ts\"",
+    "fix:prettier": "prettier --write \"**/*.ts\"",
+    "lint": "npm run lint:eslint && npm run lint:prettier",
+    "lint:eslint": "eslint \"**/*.ts\"",
+    "lint:eslint-no-inline": "eslint --no-inline-config \"**/*.ts\"",
+    "lint:eslint-unused": "eslint --report-unused-disable-directives \"**/*.ts\"",
+    "lint:prettier": "prettier --check \"**/*.ts\"",
+    "test": "jest --config=jest.config.ts --passWithNoTests",
+    "prepare": "husky"
   },
-  "homepage": "https://github.com/tazama-lf/event-flow#readme",
   "dependencies": {
-    "@frmscoe/frms-coe-lib": "^4.1.0",
-    "@frmscoe/frms-coe-startup-lib": "^2.2.0"
+    "@frmscoe/frms-coe-startup-lib": "^2.2.0",
+    "@tazama-lf/frms-coe-lib": "4.2.0-alpha.4"
   },
   "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "4.4.0",
+    "@stylistic/eslint-plugin": "^2.6.4",
+    "@types/jest": "^29.5.12",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint": "^8.57.0",
+    "eslint-config-love": "^52.0.0",
+    "husky": "^9.1.5",
+    "ioredis-mock": "^8.9.0",
+    "jest": "^29.7.0",
+    "lint-staged": "^15.2.9",
+    "prettier": "^3.3.3",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   }
 }

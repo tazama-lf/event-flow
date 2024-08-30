@@ -26,7 +26,7 @@ const getMockRequest = () => {
       FIToFIPmtSts: {
         GrpHdr: {
           MsgId: '7717fa54e38d46e397addad281481065',
-          CreDtTm: '2024-01-02T02:21:00.000Z',
+          CreDtTm: DATE.NOW,
         },
         TxInfAndSts: {
           OrgnlInstrId: '5ab4fc7355de4ef8a75b78b00a681ed2',

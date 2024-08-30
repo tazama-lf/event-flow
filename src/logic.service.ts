@@ -49,16 +49,23 @@ export const handleTransaction = async (req: unknown): Promise<void> => {
     .filter((x) => x)
     .flat();
 
-  // Filter out expired conditions
+  const transactionDate = new Date(
+    request.transaction.FIToFIPmtSts.GrpHdr.CreDtTm,
+  );
+
+  // Filter in relevant dates
   conditions = conditions.filter((cond) => {
-    return new Date(cond!.xprtnDtTm!) > new Date();
+    return (
+      new Date(cond!.xprtnDtTm!) > transactionDate &&
+      new Date(cond!.incptnDtTm) <= transactionDate
+    );
   });
 
   // Filter out conditions not fit for transaction type
   conditions = conditions.filter((cond) =>
     cond?.prsptvs.some((p) => {
       return p.evtTp.some((evt) => {
-        return evt === 'pacs.002.001.12' || evt === 'all';
+        return evt === request.transaction.TxTp || evt === 'all';
       });
     }),
   );

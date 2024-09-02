@@ -486,7 +486,7 @@ describe('Event Flow', () => {
       expect(responseSpy).toHaveBeenCalledTimes(2);
       expect(logSpy).toHaveBeenCalledTimes(1);
       expect(logSpy).toHaveBeenCalledWith(
-        'Error while sending Typology result to CMS',
+        `Error while sending Event Flow Rule Processor result to ${config.interdictionProducer}`,
         'BAD',
         `${config.ruleName}@${config.ruleVersion}`,
         config.functionName,

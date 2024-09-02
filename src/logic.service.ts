@@ -108,10 +108,10 @@ export const determineOutcome = async (
 
     if (!config.suppressAlerts) {
       server
-        .handleResponse({ ...ruleResult }, [config.cmsProducer])
+        .handleResponse({ ...ruleResult }, [config.interdictionProducer])
         .catch((error) => {
           loggerService.error(
-            'Error while sending Typology result to CMS',
+            `Error while sending Event Flow Rule Processor result to ${config.interdictionProducer}`,
             error as Error,
             ruleResult.id,
             config.functionName,

@@ -31,7 +31,7 @@ export interface IConfig {
     cacheEnabled?: boolean;
     cacheTTL?: number;
   };
-  cmsProducer: string;
+  interdictionProducer: string;
   logger: {
     logstashHost: string;
     logstashPort: number;
@@ -52,7 +52,7 @@ export const config: IConfig = {
     secretToken: process.env.APM_SECRET_TOKEN!,
     active: process.env.APM_ACTIVE === 'true',
   },
-  cmsProducer: process.env.CMS_PRODUCER!,
+  interdictionProducer: process.env.INTERDICTION_PRODUCER!,
   db: {
     name: process.env.DATABASE_NAME!,
     password: process.env.DATABASE_PASSWORD!,

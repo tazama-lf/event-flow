@@ -14,21 +14,8 @@ import { config } from './config';
 import { handleTransaction } from './logic.service';
 
 const databaseManagerConfig = {
-  redisConfig: {
-    db: config.redis.db,
-    servers: config.redis.servers,
-    password: config.redis.password,
-    isCluster: config.redis.isCluster,
-  },
-  configuration: {
-    databaseName: config.db.name,
-    certPath: config.db.dbCertPath,
-    password: config.db.password,
-    url: config.db.url,
-    user: config.db.user,
-    localCacheEnabled: config.db.cacheEnabled,
-    localCacheTTL: config.db.cacheTTL,
-  },
+  redisConfig: config.redis,
+  configuration: config.db,
 };
 
 const loggerService: LoggerService = new LoggerService(config.sidecarHost);

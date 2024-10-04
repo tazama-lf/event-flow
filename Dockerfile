@@ -54,9 +54,6 @@ ENV APM_URL=http://apm-server.development.svc.cluster.local:8200/
 ENV APM_SECRET_TOKEN=
 ENV APM_SERVICE_NAME=
 
-#Logstash
-ENV LOGSTASH_HOST=logstash.development.svc.cluster.local
-ENV LOGSTASH_PORT=8080
 ENV LOGSTASH_LEVEL='info'
 
 # Database

@@ -3,7 +3,15 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-import { type RedisConfig } from '@frmscoe/frms-coe-lib/lib/interfaces';
+import { type RedisConfig } from '@tazama-lf/frms-coe-lib/lib/interfaces';
+import {
+  validateProcessorConfig,
+  validateRedisConfig,
+  validateEnvVar,
+  validateDatabaseConfig,
+} from '@tazama-lf/frms-coe-lib/lib/helpers/env';
+import { Database } from '@tazama-lf/frms-coe-lib/lib/helpers/env/database.config';
+import { type DBConfig } from '@tazama-lf/frms-coe-lib/lib/services/dbManager';
 
 // Load .env file into process.env if it exists. This is convenient for running locally.
 dotenv.config({
@@ -16,67 +24,33 @@ export interface IConfig {
   functionName: string;
   ruleName: string;
   ruleVersion: string;
-  apm: {
-    secretToken: string;
-    serviceName: string;
-    url: string;
-    active: boolean;
-  };
-  db: {
-    name: string;
-    password: string;
-    url: string;
-    user: string;
-    dbCertPath: string;
-    cacheEnabled?: boolean;
-    cacheTTL?: number;
-  };
+  db: DBConfig;
   interdictionProducer: string;
-  logger: {
-    logstashHost: string;
-    logstashPort: number;
-    logstashLevel: string;
-  };
+  logstashLevel: string;
   redis: RedisConfig;
-  sidecarHost: string;
+  sidecarHost?: string;
   suppressAlerts: boolean;
 }
 
+const generalConfig = validateProcessorConfig();
+const authEnabled = generalConfig.nodeEnv === 'production';
+const db = validateDatabaseConfig(authEnabled, Database.CONFIGURATION);
+const redis = validateRedisConfig(authEnabled);
+
 export const config: IConfig = {
-  maxCPU: parseInt(process.env.MAX_CPU!, 10) || 1,
-  ruleName: process.env.RULE_NAME!,
-  ruleVersion: process.env.RULE_VERSION!,
-  apm: {
-    serviceName: process.env.APM_SERVICE_NAME!,
-    url: process.env.APM_URL!,
-    secretToken: process.env.APM_SECRET_TOKEN!,
-    active: process.env.APM_ACTIVE === 'true',
-  },
-  interdictionProducer: process.env.INTERDICTION_PRODUCER!,
-  db: {
-    name: process.env.DATABASE_NAME!,
-    password: process.env.DATABASE_PASSWORD!,
-    url: process.env.DATABASE_URL!,
-    user: process.env.DATABASE_USER!,
-    dbCertPath: process.env.DATABASE_CERT_PATH!,
-    cacheEnabled: process.env.CACHE_ENABLED === 'true',
-    cacheTTL: parseInt(process.env.CACHE_TTL!, 10),
-  },
-  env: process.env.NODE_ENV!,
-  functionName: process.env.FUNCTION_NAME! || 'EFRuP',
-  logger: {
-    logstashHost: process.env.LOGSTASH_HOST!,
-    logstashPort: parseInt(process.env.LOGSTASH_PORT ?? '0', 10),
-    logstashLevel: process.env.LOGSTASH_LEVEL! || 'info',
-  },
-  redis: {
-    db: parseInt(process.env.REDIS_DB!, 10) || 0,
-    servers: JSON.parse(
-      process.env.REDIS_SERVERS! || '[{"hostname": "127.0.0.1", "port":6379}]',
-    ),
-    password: process.env.REDIS_AUTH!,
-    isCluster: process.env.REDIS_IS_CLUSTER === 'true',
-  },
-  sidecarHost: process.env.SIDECAR_HOST!,
-  suppressAlerts: process.env.SUPPRESS_ALERTS === 'true',
+  maxCPU: generalConfig.maxCPU,
+  ruleName: validateEnvVar<string>('RULE_NAME', 'string'),
+  ruleVersion: validateEnvVar<string>('RULE_VERSION', 'string'),
+  interdictionProducer: validateEnvVar<string>(
+    'INTERDICTION_PRODUCER',
+    'string',
+  ),
+  db,
+  env: generalConfig.nodeEnv,
+  functionName: generalConfig.functionName,
+  logstashLevel: validateEnvVar('LOGSTASH_LEVEL', 'string', true) || 'info',
+  redis,
+  sidecarHost: validateEnvVar<string>('SIDECAR_HOST', 'string', true),
+  suppressAlerts:
+    validateEnvVar<boolean>('SUPPRESS_ALERTS', 'boolean', true) || false,
 };

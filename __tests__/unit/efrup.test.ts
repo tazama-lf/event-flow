@@ -10,6 +10,12 @@ import { config } from '../../src/config';
 import { createConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
 import * as calc from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { handleTransaction } from '../../src/logic.service';
+import {
+  validateEnvVar,
+  validateAPMConfig,
+  validateProcessorConfig,
+  validateRedisConfig,
+} from '@tazama-lf/frms-coe-lib/lib/helpers/env';
 
 jest.mock('@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg');
 

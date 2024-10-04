@@ -3,32 +3,19 @@ import {
   CreateDatabaseManager,
   type DatabaseManagerInstance,
   LoggerService,
-} from '@frmscoe/frms-coe-lib';
+} from '@tazama-lf/frms-coe-lib';
 import {
   type IStartupService,
   StartupFactory,
-} from '@frmscoe/frms-coe-startup-lib';
+} from '@tazama-lf/frms-coe-startup-lib';
 import cluster from 'cluster';
 import os from 'os';
 import { config } from './config';
 import { handleTransaction } from './logic.service';
 
 const databaseManagerConfig = {
-  redisConfig: {
-    db: config.redis.db,
-    servers: config.redis.servers,
-    password: config.redis.password,
-    isCluster: config.redis.isCluster,
-  },
-  configuration: {
-    databaseName: config.db.name,
-    certPath: config.db.dbCertPath,
-    password: config.db.password,
-    url: config.db.url,
-    user: config.db.user,
-    localCacheEnabled: config.db.cacheEnabled,
-    localCacheTTL: config.db.cacheTTL,
-  },
+  redisConfig: config.redis,
+  configuration: config.db,
 };
 
 const loggerService: LoggerService = new LoggerService(config.sidecarHost);

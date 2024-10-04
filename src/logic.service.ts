@@ -1,7 +1,7 @@
 import {
   type RuleRequest,
   type RuleResult,
-} from '@frmscoe/frms-coe-lib/lib/interfaces';
+} from '@tazama-lf/frms-coe-lib/lib/interfaces';
 import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
 import { CalculateDuration } from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { type ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';

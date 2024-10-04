@@ -3,7 +3,7 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-import { type RedisConfig } from '@frmscoe/frms-coe-lib/lib/interfaces';
+import { type RedisConfig } from '@tazama-lf/frms-coe-lib/lib/interfaces';
 
 // Load .env file into process.env if it exists. This is convenient for running locally.
 dotenv.config({
@@ -16,12 +16,6 @@ export interface IConfig {
   functionName: string;
   ruleName: string;
   ruleVersion: string;
-  apm: {
-    secretToken: string;
-    serviceName: string;
-    url: string;
-    active: boolean;
-  };
   db: {
     name: string;
     password: string;
@@ -46,12 +40,6 @@ export const config: IConfig = {
   maxCPU: parseInt(process.env.MAX_CPU!, 10) || 1,
   ruleName: process.env.RULE_NAME!,
   ruleVersion: process.env.RULE_VERSION!,
-  apm: {
-    serviceName: process.env.APM_SERVICE_NAME!,
-    url: process.env.APM_URL!,
-    secretToken: process.env.APM_SECRET_TOKEN!,
-    active: process.env.APM_ACTIVE === 'true',
-  },
   interdictionProducer: process.env.INTERDICTION_PRODUCER!,
   db: {
     name: process.env.DATABASE_NAME!,

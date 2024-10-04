@@ -12,3 +12,32 @@ process.env.APM_URL = 'http://url.example.com';
 process.env.APM_ACTIVE = 'false';
 process.env.APM_SERVICE_NAME = 'event-flow';
 process.env.SERVER_URL = 'http://url.example.com';
+process.env.FUNCTION_NAME = 'event-flow-rule-processor';
+process.env.RULE_NAME = 'EFRuP';
+process.env.RULE_VERSION = '1.0.0';
+
+process.env.REDIS_DATABASE = '0';
+process.env.REDIS_AUTH = 'exampleAuth';
+process.env.REDIS_SERVERS = '[{"host":"127.0.0.1", "port":6379}]';
+process.env.REDIS_IS_CLUSTER = 'false';
+
+process.env.CONFIGURATION_DATABASE = 'configuration';
+process.env.CONFIGURATION_DATABASE_URL = 'tcp://0.0.0.0:8529';
+process.env.CONFIGURATION_DATABASE_USER = 'root';
+process.env.CONFIGURATION_DATABASE_PASSWORD = '';
+process.env.CONFIGURATION_DATABASE_CERT_PATH =
+  '/usr/local/share/ca-certificates/ca-certificates.crt';
+process.env.CACHE_ENABLED = 'false';
+process.env.CACHETTL = '0';
+
+process.env.SUPPRESS_ALERTS = 'true';
+process.env.APM_ACTIVE = 'false';
+process.env.APM_SERVICE_NAME = 'typology-processor';
+process.env.APM_URL = 'http://apm:8200';
+process.env.APM_SECRET_TOKEN = '';
+
+process.env.LOGSTASH_LEVEL = 'info';
+process.env.SERVER_URL = '0.0.0.0:4222';
+process.env.STARTUP_TYPE = 'nats';
+process.env.INTERDICTION_PRODUCER = 'interdiction-service';
+process.env.SIDECAR_HOST = '';

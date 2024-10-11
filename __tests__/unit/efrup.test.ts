@@ -1,21 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
+import * as calc from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
+import { createConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
 import {
   databaseManager,
   initializeDB,
+  loggerService,
   runServer,
   server,
-  loggerService,
 } from '../../src';
 import { config } from '../../src/config';
-import { createConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
-import * as calc from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { handleTransaction } from '../../src/logic.service';
-import {
-  validateEnvVar,
-  validateAPMConfig,
-  validateProcessorConfig,
-  validateRedisConfig,
-} from '@tazama-lf/frms-coe-lib/lib/helpers/env';
 
 jest.mock('@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg');
 
@@ -222,17 +216,17 @@ describe('Event Flow', () => {
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(entityConditions) as Buffer);
           });
         })
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(accountConditions) as Buffer);
           });
         })
-        .mockImplementation(async (key: string | Buffer) => {
+        .mockImplementation(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(Buffer.from(''));
           });
@@ -274,17 +268,17 @@ describe('Event Flow', () => {
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(entityConditions) as Buffer);
           });
         })
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(accountConditions) as Buffer);
           });
         })
-        .mockImplementation(async (key: string | Buffer) => {
+        .mockImplementation(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(Buffer.from(''));
           });
@@ -323,17 +317,17 @@ describe('Event Flow', () => {
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(entityConditions) as Buffer);
           });
         })
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(accountConditions) as Buffer);
           });
         })
-        .mockImplementation(async (key: string | Buffer) => {
+        .mockImplementation(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(Buffer.from(''));
           });
@@ -371,17 +365,17 @@ describe('Event Flow', () => {
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(entityConditions) as Buffer);
           });
         })
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(accountConditions) as Buffer);
           });
         })
-        .mockImplementation(async (key: string | Buffer) => {
+        .mockImplementation(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(Buffer.from(''));
           });
@@ -417,7 +411,7 @@ describe('Event Flow', () => {
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             const corruptedBuffer = createConditionsBuffer(
               entityConditions,
@@ -462,7 +456,7 @@ describe('Event Flow', () => {
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(entityConditions) as Buffer);
           });
@@ -516,7 +510,7 @@ describe('Event Flow', () => {
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (key: string | Buffer) => {
+        .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
             resolve(createConditionsBuffer(entityConditions) as Buffer);
           });

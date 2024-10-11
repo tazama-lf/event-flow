@@ -35,7 +35,7 @@ export const handleTransaction = async (req: unknown): Promise<void> => {
       ),
     ])
   )
-    .map((dec) => {
+    .map((dec: Buffer) => {
       if (dec && dec.length > 0) {
         try {
           const decode = decodeConditionsBuffer(dec);

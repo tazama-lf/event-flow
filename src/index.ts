@@ -13,10 +13,7 @@ import os from 'os';
 import { config } from './config';
 import { handleTransaction } from './logic.service';
 
-const databaseManagerConfig = {
-  redisConfig: config.redis,
-  configuration: config.db,
-};
+const databaseManagerConfig = config.db;
 
 const loggerService: LoggerService = new LoggerService(config.sidecarHost);
 let server: IStartupService;

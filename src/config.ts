@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // config settings, env variables
-import * as dotenv from 'dotenv';
-import * as path from 'path';
-
-import { type RedisConfig } from '@tazama-lf/frms-coe-lib/lib/interfaces';
 import {
+  validateDatabaseConfig,
+  validateEnvVar,
+  validateLocalCacheConfig,
   validateProcessorConfig,
   validateRedisConfig,
-  validateEnvVar,
-  validateDatabaseConfig,
 } from '@tazama-lf/frms-coe-lib/lib/helpers/env';
 import { Database } from '@tazama-lf/frms-coe-lib/lib/helpers/env/database.config';
-import { type DBConfig } from '@tazama-lf/frms-coe-lib/lib/services/dbManager';
+import { type ManagerConfig } from '@tazama-lf/frms-coe-lib/lib/services/dbManager';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
 
 // Load .env file into process.env if it exists. This is convenient for running locally.
 dotenv.config({
@@ -24,18 +23,21 @@ export interface IConfig {
   functionName: string;
   ruleName: string;
   ruleVersion: string;
-  db: DBConfig;
+  db: ManagerConfig;
   interdictionProducer: string;
   logstashLevel: string;
-  redis: RedisConfig;
   sidecarHost?: string;
   suppressAlerts: boolean;
 }
 
 const generalConfig = validateProcessorConfig();
 const authEnabled = generalConfig.nodeEnv === 'production';
-const db = validateDatabaseConfig(authEnabled, Database.CONFIGURATION);
-const redis = validateRedisConfig(authEnabled);
+const configuration = validateDatabaseConfig(
+  authEnabled,
+  Database.CONFIGURATION,
+);
+const redisConfig = validateRedisConfig(authEnabled);
+const localCacheConfig = validateLocalCacheConfig();
 
 export const config: IConfig = {
   maxCPU: generalConfig.maxCPU,
@@ -45,11 +47,14 @@ export const config: IConfig = {
     'INTERDICTION_PRODUCER',
     'string',
   ),
-  db,
+  db: {
+    redisConfig,
+    configuration,
+    localCacheConfig,
+  },
   env: generalConfig.nodeEnv,
   functionName: generalConfig.functionName,
   logstashLevel: validateEnvVar('LOGSTASH_LEVEL', 'string', true) || 'info',
-  redis,
   sidecarHost: validateEnvVar<string>('SIDECAR_HOST', 'string', true),
   suppressAlerts:
     validateEnvVar<boolean>('SUPPRESS_ALERTS', 'boolean', true) || false,

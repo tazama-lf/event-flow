@@ -1,61 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // config settings, env variables
+
+import { type ManagerConfig } from '@tazama-lf/frms-coe-lib';
 import {
-  validateDatabaseConfig,
-  validateEnvVar,
-  validateLocalCacheConfig,
-  validateProcessorConfig,
-  validateRedisConfig,
-} from '@tazama-lf/frms-coe-lib/lib/helpers/env';
-import { Database } from '@tazama-lf/frms-coe-lib/lib/helpers/env/database.config';
-import { type ManagerConfig } from '@tazama-lf/frms-coe-lib/lib/services/dbManager';
-import * as dotenv from 'dotenv';
-import * as path from 'path';
+  type AdditionalConfig,
+  type ProcessorConfig,
+} from '@tazama-lf/frms-coe-lib/lib/config/processor.config';
 
-// Load .env file into process.env if it exists. This is convenient for running locally.
-dotenv.config({
-  path: path.resolve(__dirname, '../.env'),
-});
+export const additionalEnvironmentVariables: AdditionalConfig[] = [
+  {
+    name: 'RULE_NAME',
+    type: 'string',
+  },
+  {
+    name: 'RULE_VERSION',
+    type: 'string',
+  },
+  {
+    name: 'SUPPRESS_ALERTS',
+    type: 'boolean',
+  },
+  {
+    name: 'INTERDICTION_PRODUCER',
+    type: 'string',
+  },
+];
 
-export interface IConfig {
-  maxCPU: number;
-  env: string;
-  functionName: string;
-  ruleName: string;
-  ruleVersion: string;
-  db: ManagerConfig;
-  interdictionProducer: string;
-  logstashLevel: string;
-  sidecarHost?: string;
-  suppressAlerts: boolean;
+export interface ExtendedConfig {
+  RULE_NAME: string;
+  RULE_VERSION: string;
+  SUPPRESS_ALERTS: boolean;
+  INTERDICTION_PRODUCER: string;
 }
 
-const generalConfig = validateProcessorConfig();
-const authEnabled = generalConfig.nodeEnv === 'production';
-const configuration = validateDatabaseConfig(
-  authEnabled,
-  Database.CONFIGURATION,
-);
-const redisConfig = validateRedisConfig(authEnabled);
-const localCacheConfig = validateLocalCacheConfig();
-
-export const config: IConfig = {
-  maxCPU: generalConfig.maxCPU,
-  ruleName: validateEnvVar<string>('RULE_NAME', 'string'),
-  ruleVersion: validateEnvVar<string>('RULE_VERSION', 'string'),
-  interdictionProducer: validateEnvVar<string>(
-    'INTERDICTION_PRODUCER',
-    'string',
-  ),
-  db: {
-    redisConfig,
-    configuration,
-    localCacheConfig,
-  },
-  env: generalConfig.nodeEnv,
-  functionName: generalConfig.functionName,
-  logstashLevel: validateEnvVar('LOGSTASH_LEVEL', 'string', true) || 'info',
-  sidecarHost: validateEnvVar<string>('SIDECAR_HOST', 'string', true),
-  suppressAlerts:
-    validateEnvVar<boolean>('SUPPRESS_ALERTS', 'boolean', true) || false,
-};
+export type Databases = Required<
+  Pick<ManagerConfig, 'configuration' | 'redisConfig'>
+>;
+export type Configuration = ProcessorConfig & Databases & ExtendedConfig;

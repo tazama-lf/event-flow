@@ -6,7 +6,7 @@ import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/prot
 import { CalculateDuration } from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { type ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
 import { databaseManager, loggerService, server } from '.';
-import { config } from './config';
+import { configuration } from './';
 
 export const handleTransaction = async (req: unknown): Promise<void> => {
   const startTime = process.hrtime.bigint();
@@ -81,8 +81,8 @@ export const handleTransaction = async (req: unknown): Promise<void> => {
     loggerService.error(
       failMessage,
       error,
-      `${config.ruleName}@${config.ruleVersion}`,
-      config.functionName,
+      `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
+      configuration.functionName,
     );
   }
 };
@@ -91,7 +91,7 @@ export const determineOutcome = async (
   conditions: ConditionDetails[],
 ): Promise<RuleResult> => {
   const ruleResult: RuleResult = {
-    id: `${config.ruleName}@${config.ruleVersion}`,
+    id: `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
     cfg: 'none',
     subRuleRef: 'none',
     prcgTm: 0,
@@ -106,15 +106,17 @@ export const determineOutcome = async (
   ) {
     ruleResult.subRuleRef = 'block';
 
-    if (!config.suppressAlerts) {
+    if (!configuration.SUPPRESS_ALERTS) {
       server
-        .handleResponse({ ...ruleResult }, [config.interdictionProducer])
+        .handleResponse({ ...ruleResult }, [
+          configuration.INTERDICTION_PRODUCER,
+        ])
         .catch((error) => {
           loggerService.error(
-            `Error while sending Event Flow Rule Processor result to ${config.interdictionProducer}`,
+            `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
             error as Error,
             ruleResult.id,
-            config.functionName,
+            configuration.functionName,
           );
         });
     }

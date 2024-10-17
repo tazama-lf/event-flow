@@ -1,8 +1,8 @@
 import './apm';
 import {
-  CreateDatabaseManager,
   type DatabaseManagerInstance,
   LoggerService,
+  type ManagerConfig,
 } from '@tazama-lf/frms-coe-lib';
 import {
   type IStartupService,
@@ -10,29 +10,40 @@ import {
 } from '@tazama-lf/frms-coe-startup-lib';
 import cluster from 'cluster';
 import os from 'os';
-import { config } from './config';
 import { handleTransaction } from './logic.service';
+import { validateProcessorConfig } from '@tazama-lf/frms-coe-lib/lib/config/processor.config';
+import { CreateStorageManager } from '@tazama-lf/frms-coe-lib/lib/services/dbManager';
+import { Database } from '@tazama-lf/frms-coe-lib/lib/config/database.config';
+import { Cache } from '@tazama-lf/frms-coe-lib/lib/config/redis.config';
+import { additionalEnvironmentVariables, type Configuration } from './config';
 
-const databaseManagerConfig = config.db;
+let configuration = validateProcessorConfig(
+  additionalEnvironmentVariables,
+) as Configuration;
 
-const loggerService: LoggerService = new LoggerService(config.sidecarHost);
+const loggerService: LoggerService = new LoggerService(configuration);
 let server: IStartupService;
-let databaseManager: DatabaseManagerInstance<typeof databaseManagerConfig>;
+let databaseManager: DatabaseManagerInstance<ManagerConfig>;
 const logContext = 'startup';
 
 export const initializeDB = async (): Promise<void> => {
-  const manager = await CreateDatabaseManager(databaseManagerConfig);
-  databaseManager = manager;
+  const auth = configuration.nodeEnv === 'production';
+  const { config, db } = await CreateStorageManager(
+    [Database.CONFIGURATION, Cache.DISTRIBUTED],
+    auth,
+  );
+  databaseManager = db;
+  configuration = { ...configuration, ...config };
   loggerService.log(
     JSON.stringify(databaseManager.isReadyCheck()),
     logContext,
-    config.functionName,
+    configuration.functionName,
   );
 };
 
 export const runServer = async (): Promise<void> => {
   server = new StartupFactory();
-  if (config.env !== 'test') {
+  if (configuration.nodeEnv !== 'test') {
     let isConnected = false;
     for (let retryCount = 0; retryCount < 10; retryCount++) {
       loggerService.log('Connecting to nats server...');
@@ -40,8 +51,8 @@ export const runServer = async (): Promise<void> => {
         !(await server.init(
           handleTransaction,
           loggerService,
-          [`sub-rule-${config.ruleName}@${config.ruleVersion}`],
-          `pub-rule-${config.ruleName}@${config.ruleVersion}`,
+          [`sub-rule-${configuration.RULE_NAME}@${configuration.RULE_VERSION}`],
+          `pub-rule-${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
         ))
       ) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -59,13 +70,15 @@ export const runServer = async (): Promise<void> => {
 };
 
 const numCPUs =
-  os.cpus().length > config.maxCPU ? config.maxCPU + 1 : os.cpus().length + 1;
+  os.cpus().length > configuration.maxCPU
+    ? configuration.maxCPU + 1
+    : os.cpus().length + 1;
 
 process.on('uncaughtException', (err) => {
   loggerService.error(
     `process on uncaughtException error: ${JSON.stringify(err)}`,
     logContext,
-    config.functionName,
+    configuration.functionName,
   );
 });
 
@@ -73,11 +86,11 @@ process.on('unhandledRejection', (err) => {
   loggerService.error(
     `process on unhandledRejection error: ${JSON.stringify(err)}`,
     logContext,
-    config.functionName,
+    configuration.functionName,
   );
 });
 
-if (cluster.isPrimary && config.maxCPU !== 1) {
+if (cluster.isPrimary && configuration.maxCPU !== 1) {
   loggerService.log(`Primary ${process.pid} is running`);
 
   // Fork workers.
@@ -102,7 +115,7 @@ if (cluster.isPrimary && config.maxCPU !== 1) {
           'Error while starting service',
           err as Error,
           logContext,
-          config.functionName,
+          configuration.functionName,
         );
         process.exit(1);
       }
@@ -110,4 +123,4 @@ if (cluster.isPrimary && config.maxCPU !== 1) {
   }
 }
 
-export { databaseManager, loggerService, server };
+export { databaseManager, loggerService, server, configuration };

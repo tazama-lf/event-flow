@@ -8,7 +8,7 @@ import {
   runServer,
   server,
 } from '../../src';
-import { config } from '../../src/config';
+import { configuration } from '../../src';
 import { handleTransaction } from '../../src/logic.service';
 
 jest.mock('@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg');
@@ -178,7 +178,7 @@ describe('Event Flow', () => {
   let getBufferSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    config.suppressAlerts = true;
+    configuration.SUPPRESS_ALERTS = true;
 
     responseSpy = jest
       .spyOn(server, 'handleResponse')
@@ -212,7 +212,7 @@ describe('Event Flow', () => {
       accountConditions.conditions[0].condTp = 'non-overridable-block';
       accountConditions.conditions[0].xprtnDtTm = DATE.VALID;
 
-      config.suppressAlerts = false;
+      configuration.SUPPRESS_ALERTS = false;
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
@@ -264,7 +264,7 @@ describe('Event Flow', () => {
       accountConditions.conditions[0].condTp = 'non-overridable-block';
       accountConditions.conditions[0].xprtnDtTm = DATE.EXPIRED;
 
-      config.suppressAlerts = false;
+      configuration.SUPPRESS_ALERTS = false;
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
@@ -452,7 +452,7 @@ describe('Event Flow', () => {
       entityConditions.conditions[1].condTp = 'non-overridable-block';
       entityConditions.conditions[1].xprtnDtTm = DATE.VALID;
 
-      config.suppressAlerts = false;
+      configuration.SUPPRESS_ALERTS = false;
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
@@ -486,10 +486,10 @@ describe('Event Flow', () => {
       expect(responseSpy).toHaveBeenCalledTimes(2);
       expect(logSpy).toHaveBeenCalledTimes(1);
       expect(logSpy).toHaveBeenCalledWith(
-        `Error while sending Event Flow Rule Processor result to ${config.interdictionProducer}`,
+        `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
         'BAD',
-        `${config.ruleName}@${config.ruleVersion}`,
-        config.functionName,
+        `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
+        configuration.functionName,
       );
       expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
     });
@@ -535,8 +535,8 @@ describe('Event Flow', () => {
       expect(logSpy).toHaveBeenCalledWith(
         'Failed to send to Typology Processor.',
         'BAD',
-        `${config.ruleName}@${config.ruleVersion}`,
-        config.functionName,
+        `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
+        configuration.functionName,
       );
       expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
     });

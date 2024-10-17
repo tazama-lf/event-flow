@@ -27,10 +27,11 @@ let databaseManager: DatabaseManagerInstance<ManagerConfig>;
 const logContext = 'startup';
 
 export const initializeDB = async (): Promise<void> => {
-  const { config, db } = await CreateStorageManager([
-    Database.CONFIGURATION,
-    Cache.DISTRIBUTED,
-  ]);
+  const auth = configuration.nodeEnv === 'production';
+  const { config, db } = await CreateStorageManager(
+    [Database.CONFIGURATION, Cache.DISTRIBUTED],
+    auth,
+  );
   databaseManager = db;
   configuration = { ...configuration, ...config };
   loggerService.log(

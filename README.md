@@ -24,7 +24,7 @@ You then need to configure your environment: a [sample](.env.template) configura
 ```sh
 cp .env.template .env
 ```
-A [registry](https://github.com/frmscoe/docs/blob/dev/Technical/processor-startup-config-registry.md) of environment variables is provided to provide more context for what each variable is used for.
+A [registry](https://github.com/tazama-lf/docs/blob/dev/Technical/processor-startup-config-registry.md) of environment variables is provided to provide more context for what each variable is used for.
 
 #### Build and Start
 
@@ -85,7 +85,7 @@ graph TD;
 
 ## Outputs
 
-The output is the input with an added [RuleResult](https://github.com/frmscoe/frms-coe-lib/blob/dev/src/interfaces/rule/RuleResult.ts):
+The output is the input with an added [RuleResult](https://github.com/tazama-lf/frms-coe-lib/blob/dev/src/interfaces/rule/RuleResult.ts):
 
 ```js
 {

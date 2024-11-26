@@ -56,7 +56,7 @@ export const handleTransaction = async (req: unknown): Promise<void> => {
   // Filter in relevant dates
   conditions = conditions.filter((cond) => {
     return (
-      new Date(cond!.xprtnDtTm!) > transactionDate &&
+      (!cond!.xprtnDtTm || new Date(cond!.xprtnDtTm) > transactionDate) &&
       new Date(cond!.incptnDtTm) <= transactionDate
     );
   });

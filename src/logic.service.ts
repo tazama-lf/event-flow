@@ -120,13 +120,13 @@ export const determineOutcome = async (
           );
         });
     }
-
-    return ruleResult;
   }
 
-  if (conditions.some((cond) => cond.condTp === 'override')) {
+  if (
+    conditions.some((cond) => cond.condTp === 'override') &&
+    !conditions.some((cond) => cond.condTp === 'non-overridable-block')
+  ) {
     ruleResult.subRuleRef = 'override';
-    return ruleResult;
   }
 
   return ruleResult;

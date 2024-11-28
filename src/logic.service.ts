@@ -122,7 +122,10 @@ export const determineOutcome = async (
     }
   }
 
-  if (conditions.some((cond) => cond.condTp === 'override')) {
+  if (
+    conditions.some((cond) => cond.condTp === 'override') &&
+    !conditions.some((cond) => cond.condTp === 'non-overridable-block')
+  ) {
     ruleResult.subRuleRef = 'override';
   }
 

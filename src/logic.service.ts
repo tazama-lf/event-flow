@@ -105,21 +105,6 @@ export const determineOutcome = async (
     )
   ) {
     ruleResult.subRuleRef = 'block';
-
-    if (!configuration.SUPPRESS_ALERTS) {
-      server
-        .handleResponse({ ...ruleResult }, [
-          configuration.INTERDICTION_PRODUCER,
-        ])
-        .catch((error) => {
-          loggerService.error(
-            `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
-            error as Error,
-            ruleResult.id,
-            configuration.functionName,
-          );
-        });
-    }
   }
 
   if (
@@ -127,6 +112,20 @@ export const determineOutcome = async (
     !conditions.some((cond) => cond.condTp === 'non-overridable-block')
   ) {
     ruleResult.subRuleRef = 'override';
+  }
+
+  if (!configuration.SUPPRESS_ALERTS && ruleResult.subRuleRef === 'block') {
+    server
+      .handleResponse(ruleResult, [configuration.INTERDICTION_PRODUCER])
+      .catch((error) => {
+        loggerService.error(
+          `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
+          error as Error,
+          ruleResult.id,
+          configuration.functionName,
+        );
+      });
+    console.log('SENDING TO INTERDICTION BOIIS' + JSON.stringify(ruleResult));
   }
 
   return ruleResult;

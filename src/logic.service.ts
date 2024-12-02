@@ -71,7 +71,10 @@ export const handleTransaction = async (req: unknown): Promise<void> => {
   );
 
   //Determine outcome and calculate duration
-  const ruleResult = await determineOutcome(conditions as ConditionDetails[]);
+  const ruleResult = await determineOutcome(
+    conditions as ConditionDetails[],
+    request,
+  );
   ruleResult.prcgTm = CalculateDuration(startTime);
 
   try {
@@ -89,6 +92,7 @@ export const handleTransaction = async (req: unknown): Promise<void> => {
 
 export const determineOutcome = async (
   conditions: ConditionDetails[],
+  request: object,
 ): Promise<RuleResult> => {
   const ruleResult: RuleResult = {
     id: `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
@@ -105,21 +109,6 @@ export const determineOutcome = async (
     )
   ) {
     ruleResult.subRuleRef = 'block';
-
-    if (!configuration.SUPPRESS_ALERTS) {
-      server
-        .handleResponse({ ...ruleResult }, [
-          configuration.INTERDICTION_PRODUCER,
-        ])
-        .catch((error) => {
-          loggerService.error(
-            `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
-            error as Error,
-            ruleResult.id,
-            configuration.functionName,
-          );
-        });
-    }
   }
 
   if (
@@ -127,6 +116,21 @@ export const determineOutcome = async (
     !conditions.some((cond) => cond.condTp === 'non-overridable-block')
   ) {
     ruleResult.subRuleRef = 'override';
+  }
+
+  if (!configuration.SUPPRESS_ALERTS && ruleResult.subRuleRef === 'block') {
+    server
+      .handleResponse({ ...request, ruleResult }, [
+        configuration.INTERDICTION_PRODUCER,
+      ])
+      .catch((error) => {
+        loggerService.error(
+          `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
+          error as Error,
+          ruleResult.id,
+          configuration.functionName,
+        );
+      });
   }
 
   return ruleResult;

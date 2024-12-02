@@ -125,7 +125,6 @@ export const determineOutcome = async (
           configuration.functionName,
         );
       });
-    console.log('SENDING TO INTERDICTION BOIIS' + JSON.stringify(ruleResult));
   }
 
   return ruleResult;

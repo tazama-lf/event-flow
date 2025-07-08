@@ -28,8 +28,7 @@ process.env.CONFIGURATION_DATABASE = 'configuration';
 process.env.CONFIGURATION_DATABASE_URL = 'tcp://0.0.0.0:8529';
 process.env.CONFIGURATION_DATABASE_USER = 'root';
 process.env.CONFIGURATION_DATABASE_PASSWORD = '';
-process.env.CONFIGURATION_DATABASE_CERT_PATH =
-  '/usr/local/share/ca-certificates/ca-certificates.crt';
+process.env.CONFIGURATION_DATABASE_CERT_PATH = '/usr/local/share/ca-certificates/ca-certificates.crt';
 
 process.env.SUPPRESS_ALERTS = 'true';
 process.env.APM_ACTIVE = 'false';

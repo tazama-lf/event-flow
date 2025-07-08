@@ -1,44 +1,29 @@
 import './apm';
-import {
-  type DatabaseManagerInstance,
-  LoggerService,
-  type ManagerConfig,
-} from '@tazama-lf/frms-coe-lib';
-import {
-  type IStartupService,
-  StartupFactory,
-} from '@tazama-lf/frms-coe-startup-lib';
-import cluster from 'cluster';
-import os from 'os';
+import { type DatabaseManagerInstance, LoggerService } from '@tazama-lf/frms-coe-lib';
+import { type IStartupService, StartupFactory } from '@tazama-lf/frms-coe-startup-lib';
+import cluster from 'node:cluster';
+import os from 'node:os';
 import { handleTransaction } from './logic.service';
 import { validateProcessorConfig } from '@tazama-lf/frms-coe-lib/lib/config/processor.config';
 import { CreateStorageManager } from '@tazama-lf/frms-coe-lib/lib/services/dbManager';
 import { Database } from '@tazama-lf/frms-coe-lib/lib/config/database.config';
 import { Cache } from '@tazama-lf/frms-coe-lib/lib/config/redis.config';
 import { additionalEnvironmentVariables, type Configuration } from './config';
+import { setTimeout } from 'node:timers/promises';
 
-let configuration = validateProcessorConfig(
-  additionalEnvironmentVariables,
-) as Configuration;
+let configuration = validateProcessorConfig(additionalEnvironmentVariables) as Configuration;
 
 const loggerService: LoggerService = new LoggerService(configuration);
 let server: IStartupService;
-let databaseManager: DatabaseManagerInstance<ManagerConfig>;
+let databaseManager: DatabaseManagerInstance<Configuration>;
 const logContext = 'startup';
 
 export const initializeDB = async (): Promise<void> => {
   const auth = configuration.nodeEnv === 'production';
-  const { config, db } = await CreateStorageManager(
-    [Database.CONFIGURATION, Cache.DISTRIBUTED],
-    auth,
-  );
+  const { config, db } = await CreateStorageManager<typeof configuration>([Database.CONFIGURATION, Cache.DISTRIBUTED], auth);
   databaseManager = db;
   configuration = { ...configuration, ...config };
-  loggerService.log(
-    JSON.stringify(databaseManager.isReadyCheck()),
-    logContext,
-    configuration.functionName,
-  );
+  loggerService.log(JSON.stringify(databaseManager.isReadyCheck()), logContext, configuration.functionName);
 };
 
 export const runServer = async (): Promise<void> => {
@@ -55,7 +40,7 @@ export const runServer = async (): Promise<void> => {
           `pub-rule-${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
         ))
       ) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await setTimeout(5000);
       } else {
         loggerService.log('Connected to nats');
         isConnected = true;
@@ -69,25 +54,14 @@ export const runServer = async (): Promise<void> => {
   }
 };
 
-const numCPUs =
-  os.cpus().length > configuration.maxCPU
-    ? configuration.maxCPU + 1
-    : os.cpus().length + 1;
+const numCPUs = os.cpus().length > configuration.maxCPU ? configuration.maxCPU + 1 : os.cpus().length + 1;
 
 process.on('uncaughtException', (err) => {
-  loggerService.error(
-    `process on uncaughtException error: ${JSON.stringify(err)}`,
-    logContext,
-    configuration.functionName,
-  );
+  loggerService.error(`process on uncaughtException error: ${JSON.stringify(err)}`, logContext, configuration.functionName);
 });
 
 process.on('unhandledRejection', (err) => {
-  loggerService.error(
-    `process on unhandledRejection error: ${JSON.stringify(err)}`,
-    logContext,
-    configuration.functionName,
-  );
+  loggerService.error(`process on unhandledRejection error: ${JSON.stringify(err)}`, logContext, configuration.functionName);
 });
 
 if (cluster.isPrimary && configuration.maxCPU !== 1) {
@@ -99,9 +73,7 @@ if (cluster.isPrimary && configuration.maxCPU !== 1) {
   }
 
   cluster.on('exit', (worker, code, signal) => {
-    loggerService.log(
-      `worker ${Number(worker.process.pid)} died, starting another worker`,
-    );
+    loggerService.log(`worker ${Number(worker.process.pid)} died, starting another worker`);
     cluster.fork();
   });
 } else {
@@ -111,12 +83,7 @@ if (cluster.isPrimary && configuration.maxCPU !== 1) {
         await initializeDB();
         await runServer();
       } catch (err) {
-        loggerService.error(
-          'Error while starting service',
-          err as Error,
-          logContext,
-          configuration.functionName,
-        );
+        loggerService.error('Error while starting service', err as Error, logContext, configuration.functionName);
         process.exit(1);
       }
     })();

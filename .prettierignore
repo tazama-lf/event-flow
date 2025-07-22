@@ -2,4 +2,5 @@
 # Ignore artifacts:
 build
 coverage
+__tests__
 src/models

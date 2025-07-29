@@ -40,6 +40,7 @@ process.env.LOGSTASH_LEVEL = 'info';
 process.env.SERVER_URL = '0.0.0.0:4222';
 process.env.STARTUP_TYPE = 'nats';
 process.env.INTERDICTION_PRODUCER = 'interdiction-service';
+process.env.INTERDICTION_DESTINATION = 'global';
 process.env.SIDECAR_HOST = '';
 
 process.env.LOCAL_CACHETTL = '300';

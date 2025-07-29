@@ -5,6 +5,61 @@ import type { ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/ev
 import { databaseManager, loggerService, server } from '.';
 import { configuration } from './';
 
+// Constants to avoid magic numbers
+const BUFFER_EMPTY_LENGTH = 0;
+const CREDITOR_CONDITION_INDEX_LIMIT = 1;
+const INITIAL_PROCESSING_TIME = 0;
+
+/**
+ * Extracts tenantId from the transaction payload
+ * @param transaction - The transaction object
+ * @returns The tenantId or a default value if not found
+ */
+const extractTenantId = (transaction: unknown): string => {
+  if (transaction === null || transaction === undefined) {
+    return 'default';
+  }
+
+  const txn = transaction as Record<string, unknown>;
+
+  // Direct tenant ID properties
+  if (typeof txn.TenantId === 'string') {
+    return txn.TenantId;
+  }
+  if (typeof txn.tenantId === 'string') {
+    return txn.tenantId;
+  }
+
+  // Nested tenant ID properties
+  const fiToFi = txn.FIToFIPmtSts as Record<string, unknown> | null | undefined;
+  if (fiToFi && typeof fiToFi === 'object') {
+    if (typeof fiToFi.TenantId === 'string') {
+      return fiToFi.TenantId;
+    }
+    if (typeof fiToFi.tenantId === 'string') {
+      return fiToFi.tenantId;
+    }
+  }
+
+  return 'default'; // fallback for backwards compatibility
+};
+
+/**
+ * Calculates the interdiction destination based on configuration and tenantId
+ * @param tenantId - The tenant identifier
+ * @returns The NATS subject for interdiction messages
+ */
+const calculateInterdictionDestination = (tenantId: string): string => {
+  const destinationMode = configuration.INTERDICTION_DESTINATION?.toLowerCase() ?? 'global';
+
+  if (destinationMode === 'tenant') {
+    return `${configuration.INTERDICTION_PRODUCER}-${tenantId}`;
+  }
+
+  // Default to global destination
+  return configuration.INTERDICTION_PRODUCER;
+};
+
 const handleTransaction = async (req: unknown): Promise<void> => {
   const startTime = process.hrtime.bigint();
   const msg = req as RuleRequest;
@@ -16,22 +71,25 @@ const handleTransaction = async (req: unknown): Promise<void> => {
     metaData: msg.metaData,
   };
 
+  // Extract tenant ID for multi-tenant isolation
+  const tenantId = extractTenantId(request.transaction);
+
   const debtorConditions: ConditionDetails[] = [];
   const creditorConditions: ConditionDetails[] = [];
 
   (
     await Promise.all([
-      databaseManager._redisClient.getBuffer(`entities/${request.DataCache.cdtrId}`),
-      databaseManager._redisClient.getBuffer(`accounts/${request.DataCache.cdtrAcctId}`),
-      databaseManager._redisClient.getBuffer(`entities/${request.DataCache.dbtrId}`),
-      databaseManager._redisClient.getBuffer(`accounts/${request.DataCache.dbtrAcctId}`),
+      databaseManager._redisClient.getBuffer(`entities/${tenantId}/${request.DataCache.cdtrId}`),
+      databaseManager._redisClient.getBuffer(`accounts/${tenantId}/${request.DataCache.cdtrAcctId}`),
+      databaseManager._redisClient.getBuffer(`entities/${tenantId}/${request.DataCache.dbtrId}`),
+      databaseManager._redisClient.getBuffer(`accounts/${tenantId}/${request.DataCache.dbtrAcctId}`),
     ])
   ).forEach((dec: Buffer | null, idx: number) => {
-    if (dec && dec.length > 0) {
+    if (dec && dec.length > BUFFER_EMPTY_LENGTH) {
       try {
         const decode = decodeConditionsBuffer(dec);
         if (decode) {
-          if (idx <= 1) {
+          if (idx <= CREDITOR_CONDITION_INDEX_LIMIT) {
             creditorConditions.push(...decode.conditions);
           } else {
             debtorConditions.push(...decode.conditions);
@@ -48,7 +106,7 @@ const handleTransaction = async (req: unknown): Promise<void> => {
   const validConditions = sanitizeConditions(creditorConditions, debtorConditions, transactionDate, request.transaction.TxTp);
 
   // Determine outcome and calculate duration
-  const ruleResult = determineOutcome(validConditions, request);
+  const ruleResult = determineOutcome(validConditions, request, tenantId);
   ruleResult.prcgTm = CalculateDuration(startTime);
 
   try {
@@ -117,15 +175,15 @@ const sanitizeConditions = (
   return [...sanitizedCreditorConditions, ...sanitizedDebtorConditions];
 };
 
-const determineOutcome = (conditions: string[], request: object): RuleResult => {
+const determineOutcome = (conditions: string[], request: object, tenantId: string): RuleResult => {
   const ruleResult: RuleResult = {
     id: `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
     cfg: 'none',
     subRuleRef: 'none',
-    prcgTm: 0,
+    prcgTm: INITIAL_PROCESSING_TIME,
   };
 
-  if (conditions.length === 0) return ruleResult;
+  if (conditions.length === BUFFER_EMPTY_LENGTH) return ruleResult;
 
   if (conditions.some((cond) => cond === 'non-overridable-block' || cond === 'overridable-block')) {
     ruleResult.subRuleRef = 'block';
@@ -136,9 +194,10 @@ const determineOutcome = (conditions: string[], request: object): RuleResult => 
   }
 
   if (!configuration.SUPPRESS_ALERTS && ruleResult.subRuleRef === 'block') {
-    server.handleResponse({ ...request, ruleResult }, [configuration.INTERDICTION_PRODUCER]).catch((error: unknown) => {
+    const interdictionDestination = calculateInterdictionDestination(tenantId);
+    server.handleResponse({ ...request, ruleResult }, [interdictionDestination]).catch((error: unknown) => {
       loggerService.error(
-        `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
+        `Error while sending Event Flow Rule Processor result to ${interdictionDestination}`,
         error as Error,
         ruleResult.id,
         configuration.functionName,
@@ -149,4 +208,4 @@ const determineOutcome = (conditions: string[], request: object): RuleResult => 
   return ruleResult;
 };
 
-export { determineOutcome, sanitizeConditions, handleTransaction };
+export { determineOutcome, sanitizeConditions, handleTransaction, extractTenantId, calculateInterdictionDestination };

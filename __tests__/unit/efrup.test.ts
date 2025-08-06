@@ -14,7 +14,7 @@ import {
   runServer,
   server,
 } from '../../src';
-import { handleTransaction, sanitizeConditions, extractTenantId, calculateInterdictionDestination } from '../../src/logic.service';
+import { handleTransaction, sanitizeConditions, extractTenantId, extractTenantIdFromPacs002, calculateInterdictionDestination } from '../../src/logic.service';
 
 jest.mock('@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg');
 
@@ -109,6 +109,7 @@ const getMockEntityCondition = () => {
         condTp: 'overridable-block',
         incptnDtTm: DATE.NOW,
         xprtnDtTm: DATE.LASTWEEK,
+        tenantId: 'test-tenant', // Added for frms-coe-lib #253 compliance
         condRsn: 'R001',
         usr: 'test',
         creDtTm: DATE.NOW,
@@ -132,6 +133,7 @@ const getMockEntityCondition = () => {
         condTp: 'override',
         incptnDtTm: DATE.NOW,
         xprtnDtTm: DATE.LASTWEEK,
+        tenantId: 'test-tenant', // Added for frms-coe-lib #253 compliance
         condRsn: 'R002',
         usr: 'test',
         creDtTm: DATE.NOW,
@@ -164,6 +166,7 @@ const getMockAccountCondition = () => {
         condRsn: 'R001',
         usr: 'test',
         creDtTm: DATE.NOW,
+        tenantId: 'test-tenant', // Required by frms-coe-lib for multi-tenant support
         prsptvs: [
           {
             prsptv: 'governed_as_creditor_by',
@@ -267,6 +270,7 @@ describe('Event Flow', () => {
               usr: 'test',
               creDtTm: DATE.LASTWEEK,
               prsptvs: prsptvs,
+              tenantId: 'test-tenant', // Required by frms-coe-lib for multi-tenant support
             },
           ],
         };
@@ -289,6 +293,7 @@ describe('Event Flow', () => {
               usr: 'test',
               creDtTm: DATE.LASTWEEK,
               prsptvs: prsptvs,
+              tenantId: 'test-tenant', // Required by frms-coe-lib for multi-tenant support
             },
           ],
         };
@@ -1476,6 +1481,59 @@ describe('Event Flow', () => {
         FIToFIPmtSts: null
       };
       const result = extractTenantId(transaction);
+      expect(result).toBe('default');
+    });
+
+    it('should handle empty string tenantId and return default', () => {
+      const transaction = { TenantId: '' };
+      const result = extractTenantId(transaction);
+      expect(result).toBe('default');
+    });
+
+    it('should handle whitespace-only tenantId and return default', () => {
+      const transaction = { TenantId: '   ' };
+      const result = extractTenantId(transaction);
+      expect(result).toBe('default');
+    });
+  });
+
+  describe('Type-Safe Tenant Extraction Tests', () => {
+    it('should extract tenantId from properly typed Pacs002 transaction', () => {
+      const pacs002Transaction = {
+        TxTp: 'pacs.002.001.12',
+        TenantId: 'bank-alpha',
+        FIToFIPmtSts: {
+          GrpHdr: { MsgId: 'test', CreDtTm: new Date().toISOString() },
+          TxInfAndSts: {} as any
+        }
+      };
+      const result = extractTenantIdFromPacs002(pacs002Transaction);
+      expect(result).toBe('bank-alpha');
+    });
+
+    it('should return default for empty tenantId in Pacs002', () => {
+      const pacs002Transaction = {
+        TxTp: 'pacs.002.001.12',
+        TenantId: '',
+        FIToFIPmtSts: {
+          GrpHdr: { MsgId: 'test', CreDtTm: new Date().toISOString() },
+          TxInfAndSts: {} as any
+        }
+      };
+      const result = extractTenantIdFromPacs002(pacs002Transaction);
+      expect(result).toBe('default');
+    });
+
+    it('should return default for whitespace tenantId in Pacs002', () => {
+      const pacs002Transaction = {
+        TxTp: 'pacs.002.001.12',
+        TenantId: '   ',
+        FIToFIPmtSts: {
+          GrpHdr: { MsgId: 'test', CreDtTm: new Date().toISOString() },
+          TxInfAndSts: {} as any
+        }
+      };
+      const result = extractTenantIdFromPacs002(pacs002Transaction);
       expect(result).toBe('default');
     });
   });

@@ -1,6 +1,6 @@
 import { CalculateDuration } from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
-import type { RuleRequest, RuleResult } from '@tazama-lf/frms-coe-lib/lib/interfaces';
+import type { RuleRequest, RuleResult, Pacs002 } from '@tazama-lf/frms-coe-lib/lib/interfaces';
 import type { ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
 import { databaseManager, loggerService, server } from '.';
 import { configuration } from './';
@@ -12,7 +12,7 @@ const INITIAL_PROCESSING_TIME = 0;
 
 /**
  * Extracts tenantId from the transaction payload
- * @param transaction - The transaction object
+ * @param transaction - The transaction object (should be Pacs002 with TenantId, but supports legacy formats)
  * @returns The tenantId or a default value if not found
  */
 const extractTenantId = (transaction: unknown): string => {
@@ -22,27 +22,37 @@ const extractTenantId = (transaction: unknown): string => {
 
   const txn = transaction as Record<string, unknown>;
 
-  // Direct tenant ID properties
-  if (typeof txn.TenantId === 'string') {
+  // Primary: Direct TenantId (now required by Pacs002 interface)
+  if (typeof txn.TenantId === 'string' && txn.TenantId.trim() !== '') {
     return txn.TenantId;
   }
-  if (typeof txn.tenantId === 'string') {
+
+  // Fallback: Case variation for legacy compatibility
+  if (typeof txn.tenantId === 'string' && txn.tenantId.trim() !== '') {
     return txn.tenantId;
   }
 
-  // Nested tenant ID properties
+  // Nested tenant ID properties (for legacy message formats)
   const fiToFi = txn.FIToFIPmtSts as Record<string, unknown> | null | undefined;
   if (fiToFi && typeof fiToFi === 'object') {
-    if (typeof fiToFi.TenantId === 'string') {
+    if (typeof fiToFi.TenantId === 'string' && fiToFi.TenantId.trim() !== '') {
       return fiToFi.TenantId;
     }
-    if (typeof fiToFi.tenantId === 'string') {
+    if (typeof fiToFi.tenantId === 'string' && fiToFi.tenantId.trim() !== '') {
       return fiToFi.tenantId;
     }
   }
 
-  return 'default'; // fallback for backwards compatibility
+  return 'default'; // fallback for backward compatibility
 };
+
+/**
+ * Type-safe tenant extraction for properly formatted Pacs002 transactions
+ * @param transaction - Properly typed Pacs002 transaction
+ * @returns The tenantId from the transaction
+ */
+const extractTenantIdFromPacs002 = (transaction: Pacs002): string =>
+  transaction.TenantId && transaction.TenantId.trim() !== '' ? transaction.TenantId : 'default';
 
 /**
  * Calculates the interdiction destination based on configuration and tenantId
@@ -208,4 +218,11 @@ const determineOutcome = (conditions: string[], request: object, tenantId: strin
   return ruleResult;
 };
 
-export { determineOutcome, sanitizeConditions, handleTransaction, extractTenantId, calculateInterdictionDestination };
+export {
+  determineOutcome,
+  sanitizeConditions,
+  handleTransaction,
+  extractTenantId,
+  extractTenantIdFromPacs002,
+  calculateInterdictionDestination,
+};

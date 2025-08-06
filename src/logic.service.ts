@@ -59,16 +59,10 @@ const extractTenantIdFromPacs002 = (transaction: Pacs002): string =>
  * @param tenantId - The tenant identifier
  * @returns The NATS subject for interdiction messages
  */
-const calculateInterdictionDestination = (tenantId: string): string => {
-  const destinationMode = configuration.INTERDICTION_DESTINATION?.toLowerCase() ?? 'global';
-
-  if (destinationMode === 'tenant') {
-    return `${configuration.INTERDICTION_PRODUCER}-${tenantId}`;
-  }
-
-  // Default to global destination
-  return configuration.INTERDICTION_PRODUCER;
-};
+const calculateInterdictionDestination = (tenantId: string): string =>
+  (configuration.INTERDICTION_DESTINATION?.toLowerCase() ?? 'global') === 'tenant'
+    ? `${configuration.INTERDICTION_PRODUCER}-${tenantId}`
+    : configuration.INTERDICTION_PRODUCER;
 
 const handleTransaction = async (req: unknown): Promise<void> => {
   const startTime = process.hrtime.bigint();

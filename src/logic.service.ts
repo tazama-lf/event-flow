@@ -5,7 +5,6 @@ import type { ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/ev
 import { databaseManager, loggerService, server } from '.';
 import { configuration } from './';
 
-// Constants to avoid magic numbers
 const BUFFER_EMPTY_LENGTH = 0;
 const CREDITOR_CONDITION_INDEX_LIMIT = 1;
 const INITIAL_PROCESSING_TIME = 0;

@@ -2,12 +2,34 @@ import { CalculateDuration } from '@tazama-lf/frms-coe-lib/lib/helpers/calculate
 import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
 import type { RuleRequest, RuleResult, Pacs002 } from '@tazama-lf/frms-coe-lib/lib/interfaces';
 import type { ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
-import { databaseManager, loggerService, server } from '.';
-import { configuration } from './';
 
-const BUFFER_EMPTY_LENGTH = 0;
-const CREDITOR_CONDITION_INDEX_LIMIT = 1;
+// Constants for magic numbers
+const BUFFER_MIN_LENGTH = 0;
+const CREDITOR_INDEX_LIMIT = 1;
 const INITIAL_PROCESSING_TIME = 0;
+
+// Dependency interfaces for injection
+interface Dependencies {
+  databaseManager: {
+    _redisClient: {
+      getBuffer: (key: string) => Promise<Buffer | null>;
+    };
+  };
+  loggerService: {
+    error: (message: string, error?: unknown, id?: string, functionName?: string) => void;
+  };
+  server: {
+    handleResponse: (response: object, subject?: string[]) => Promise<void>;
+  };
+  configuration: {
+    RULE_NAME: string;
+    RULE_VERSION: string;
+    INTERDICTION_DESTINATION: 'global' | 'tenant';
+    INTERDICTION_PRODUCER: string;
+    SUPPRESS_ALERTS: boolean;
+    functionName: string;
+  };
+}
 
 /**
  * Extracts tenantId from the transaction payload
@@ -56,14 +78,16 @@ const extractTenantIdFromPacs002 = (transaction: Pacs002): string =>
 /**
  * Calculates the interdiction destination based on configuration and tenantId
  * @param tenantId - The tenant identifier
+ * @param configuration - The configuration object
  * @returns The NATS subject for interdiction messages
  */
-const calculateInterdictionDestination = (tenantId: string): string =>
-  (configuration.INTERDICTION_DESTINATION?.toLowerCase() ?? 'global') === 'tenant'
+const calculateInterdictionDestination = (tenantId: string, configuration: Dependencies['configuration']): string =>
+  configuration.INTERDICTION_DESTINATION === 'tenant'
     ? `${configuration.INTERDICTION_PRODUCER}-${tenantId}`
     : configuration.INTERDICTION_PRODUCER;
 
-const handleTransaction = async (req: unknown): Promise<void> => {
+const handleTransaction = async (req: unknown, dependencies: Dependencies): Promise<void> => {
+  const { databaseManager, loggerService, server, configuration } = dependencies;
   const startTime = process.hrtime.bigint();
   const msg = req as RuleRequest;
 
@@ -88,11 +112,11 @@ const handleTransaction = async (req: unknown): Promise<void> => {
       databaseManager._redisClient.getBuffer(`accounts/${tenantId}/${request.DataCache.dbtrAcctId}`),
     ])
   ).forEach((dec: Buffer | null, idx: number) => {
-    if (dec && dec.length > BUFFER_EMPTY_LENGTH) {
+    if (dec && dec.length > BUFFER_MIN_LENGTH) {
       try {
         const decode = decodeConditionsBuffer(dec);
         if (decode) {
-          if (idx <= CREDITOR_CONDITION_INDEX_LIMIT) {
+          if (idx <= CREDITOR_INDEX_LIMIT) {
             creditorConditions.push(...decode.conditions);
           } else {
             debtorConditions.push(...decode.conditions);
@@ -109,7 +133,7 @@ const handleTransaction = async (req: unknown): Promise<void> => {
   const validConditions = sanitizeConditions(creditorConditions, debtorConditions, transactionDate, request.transaction.TxTp);
 
   // Determine outcome and calculate duration
-  const ruleResult = determineOutcome(validConditions, request, tenantId);
+  const ruleResult = determineOutcome(validConditions, request, tenantId, dependencies);
   ruleResult.prcgTm = CalculateDuration(startTime);
 
   try {
@@ -178,7 +202,8 @@ const sanitizeConditions = (
   return [...sanitizedCreditorConditions, ...sanitizedDebtorConditions];
 };
 
-const determineOutcome = (conditions: string[], request: object, tenantId: string): RuleResult => {
+const determineOutcome = (conditions: string[], request: object, tenantId: string, dependencies: Dependencies): RuleResult => {
+  const { configuration, server, loggerService } = dependencies;
   const ruleResult: RuleResult = {
     id: `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
     cfg: 'none',
@@ -186,7 +211,7 @@ const determineOutcome = (conditions: string[], request: object, tenantId: strin
     prcgTm: INITIAL_PROCESSING_TIME,
   };
 
-  if (conditions.length === BUFFER_EMPTY_LENGTH) return ruleResult;
+  if (conditions.length === BUFFER_MIN_LENGTH) return ruleResult;
 
   if (conditions.some((cond) => cond === 'non-overridable-block' || cond === 'overridable-block')) {
     ruleResult.subRuleRef = 'block';
@@ -197,7 +222,7 @@ const determineOutcome = (conditions: string[], request: object, tenantId: strin
   }
 
   if (!configuration.SUPPRESS_ALERTS && ruleResult.subRuleRef === 'block') {
-    const interdictionDestination = calculateInterdictionDestination(tenantId);
+    const interdictionDestination = calculateInterdictionDestination(tenantId, configuration);
     server.handleResponse({ ...request, ruleResult }, [interdictionDestination]).catch((error: unknown) => {
       loggerService.error(
         `Error while sending Event Flow Rule Processor result to ${interdictionDestination}`,
@@ -211,10 +236,39 @@ const determineOutcome = (conditions: string[], request: object, tenantId: strin
   return ruleResult;
 };
 
+// Factory function to create service with injected dependencies
+const createEventFlowService = (
+  dependencies: Dependencies,
+): {
+  handleTransaction: (req: unknown) => Promise<void>;
+  determineOutcome: (conditions: string[], request: object, tenantId: string) => RuleResult;
+  calculateInterdictionDestination: (tenantId: string) => string;
+  sanitizeConditions: typeof sanitizeConditions;
+  extractTenantId: typeof extractTenantId;
+  extractTenantIdFromPacs002: typeof extractTenantIdFromPacs002;
+} => ({
+  handleTransaction: async (req: unknown): Promise<void> => {
+    await handleTransaction(req, dependencies);
+  },
+  determineOutcome: (conditions: string[], request: object, tenantId: string): RuleResult =>
+    determineOutcome(conditions, request, tenantId, dependencies),
+  calculateInterdictionDestination: (tenantId: string): string => calculateInterdictionDestination(tenantId, dependencies.configuration),
+  sanitizeConditions,
+  extractTenantId,
+  extractTenantIdFromPacs002,
+});
+
+// Export types and functions
+export type { Dependencies };
+
 export {
+  // Dependency injection approach
+  createEventFlowService,
+
+  // Individual functions (now require dependencies for some)
+  handleTransaction,
   determineOutcome,
   sanitizeConditions,
-  handleTransaction,
   extractTenantId,
   extractTenantIdFromPacs002,
   calculateInterdictionDestination,

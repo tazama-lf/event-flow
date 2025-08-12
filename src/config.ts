@@ -32,7 +32,7 @@ export interface ExtendedConfig {
   RULE_VERSION: string;
   SUPPRESS_ALERTS: boolean;
   INTERDICTION_PRODUCER: string;
-  INTERDICTION_DESTINATION?: string;
+  INTERDICTION_DESTINATION: 'global' | 'tenant';
 }
 
 export type Databases = Required<Pick<ManagerConfig, 'configuration' | 'redisConfig'>>;

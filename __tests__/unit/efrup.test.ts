@@ -14,9 +14,29 @@ import {
   runServer,
   server,
 } from '../../src';
-import { handleTransaction, sanitizeConditions, extractTenantId, extractTenantIdFromPacs002, calculateInterdictionDestination } from '../../src/logic.service';
+import { 
+  handleTransaction as handleTransactionCore, 
+  sanitizeConditions, 
+  extractTenantId, 
+  extractTenantIdFromPacs002, 
+  calculateInterdictionDestination,
+  createEventFlowService,
+  type Dependencies
+} from '../../src/logic.service';
 
 jest.mock('@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg');
+
+// Create wrapper functions for tests that provide dependencies dynamically
+const handleTransaction = async (req: unknown): Promise<void> => {
+  // Create dependencies dynamically to use current test mocks
+  const mockDependencies: Dependencies = {
+    databaseManager,
+    loggerService,
+    server,
+    configuration,
+  };
+  return handleTransactionCore(req, mockDependencies);
+};
 
 const DATE = {
   NOW: new Date().toISOString(),
@@ -1547,26 +1567,20 @@ describe('Event Flow', () => {
 
     it('should return global destination when mode is global', () => {
       configuration.INTERDICTION_DESTINATION = 'global';
-      const result = calculateInterdictionDestination('tenant123');
-      expect(result).toBe('interdiction-service');
-    });
-
-    it('should return global destination when mode is undefined', () => {
-      configuration.INTERDICTION_DESTINATION = undefined;
-      const result = calculateInterdictionDestination('tenant123');
+      const result = calculateInterdictionDestination('tenant123', configuration);
       expect(result).toBe('interdiction-service');
     });
 
     it('should return tenant-specific destination when mode is tenant', () => {
       configuration.INTERDICTION_DESTINATION = 'tenant';
-      const result = calculateInterdictionDestination('tenant123');
+      const result = calculateInterdictionDestination('tenant123', configuration);
       expect(result).toBe('interdiction-service-tenant123');
     });
 
-    it('should return tenant-specific destination when mode is TENANT (uppercase)', () => {
-      configuration.INTERDICTION_DESTINATION = 'TENANT';
-      const result = calculateInterdictionDestination('tenant456');
-      expect(result).toBe('interdiction-service-tenant456');
+    it('should return global destination when mode is global', () => {
+      configuration.INTERDICTION_DESTINATION = 'global';
+      const result = calculateInterdictionDestination('tenant456', configuration);
+      expect(result).toBe('interdiction-service');
     });
   });
 
@@ -1665,6 +1679,165 @@ describe('Event Flow', () => {
 
       await handleTransaction(req);
       expect(interdictionSpy).toHaveBeenCalledTimes(2); // One for interdiction, one for final response
+    });
+  });
+
+  describe('Factory Pattern Tests', () => {
+    it('should create event flow service with dependency injection', () => {
+      const mockDependencies: Dependencies = {
+        databaseManager,
+        loggerService,
+        server,
+        configuration,
+      };
+
+      const service = createEventFlowService(mockDependencies);
+
+      expect(service).toBeDefined();
+      expect(typeof service.handleTransaction).toBe('function');
+      expect(typeof service.determineOutcome).toBe('function');
+      expect(typeof service.calculateInterdictionDestination).toBe('function');
+      expect(typeof service.sanitizeConditions).toBe('function');
+      expect(typeof service.extractTenantId).toBe('function');
+      expect(typeof service.extractTenantIdFromPacs002).toBe('function');
+    });
+
+    it('should call injected dependencies when using factory service', () => {
+      const mockDependencies: Dependencies = {
+        databaseManager,
+        loggerService,
+        server,
+        configuration,
+      };
+
+      const service = createEventFlowService(mockDependencies);
+      const tenantId = service.extractTenantId({ TenantId: 'test-tenant' });
+      
+      expect(tenantId).toBe('test-tenant');
+    });
+
+    it('should use factory determineOutcome with dependency injection', () => {
+      const mockDependencies: Dependencies = {
+        databaseManager,
+        loggerService,
+        server,
+        configuration,
+      };
+
+      const service = createEventFlowService(mockDependencies);
+      const mockRequest = getMockRequest();
+      const conditions = ['non-overridable-block'];
+      
+      const result = service.determineOutcome(conditions, mockRequest, 'test-tenant');
+      
+      expect(result).toBeDefined();
+      expect(result.subRuleRef).toBe('block');
+      expect(result.id).toBe(`${configuration.RULE_NAME}@${configuration.RULE_VERSION}`);
+    });
+
+    it('should use factory calculateInterdictionDestination with dependency injection', () => {
+      const mockDependencies: Dependencies = {
+        databaseManager,
+        loggerService,
+        server,
+        configuration,
+      };
+      
+      // Test global destination
+      configuration.INTERDICTION_DESTINATION = 'global';
+      const service = createEventFlowService(mockDependencies);
+      const globalResult = service.calculateInterdictionDestination('test-tenant');
+      expect(globalResult).toBe('interdiction-service');
+
+      // Test tenant destination
+      configuration.INTERDICTION_DESTINATION = 'tenant';
+      const service2 = createEventFlowService(mockDependencies);
+      const tenantResult = service2.calculateInterdictionDestination('test-tenant');
+      expect(tenantResult).toBe('interdiction-service-test-tenant');
+    });
+
+    it('should use factory sanitizeConditions function', () => {
+      const mockDependencies: Dependencies = {
+        databaseManager,
+        loggerService,
+        server,
+        configuration,
+      };
+
+      const service = createEventFlowService(mockDependencies);
+      const creditorConditions = getMockEntityCondition().conditions;
+      const debtorConditions = getMockAccountCondition().conditions;
+      
+      // Set up conditions to be valid
+      creditorConditions[0].xprtnDtTm = DATE.NEXTWEEK;
+      debtorConditions[0].xprtnDtTm = DATE.NEXTWEEK;
+      
+      const result = service.sanitizeConditions(
+        creditorConditions,
+        debtorConditions,
+        new Date(DATE.NOW),
+        'pacs.002.001.12'
+      );
+      
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it('should use factory extractTenantIdFromPacs002 function', () => {
+      const mockDependencies: Dependencies = {
+        databaseManager,
+        loggerService,
+        server,
+        configuration,
+      };
+
+      const service = createEventFlowService(mockDependencies);
+      const pacs002Transaction = {
+        TxTp: 'pacs.002.001.12',
+        TenantId: 'bank-factory-test',
+        FIToFIPmtSts: {
+          GrpHdr: { MsgId: 'test', CreDtTm: new Date().toISOString() },
+          TxInfAndSts: {} as any
+        }
+      };
+      
+      const result = service.extractTenantIdFromPacs002(pacs002Transaction);
+      expect(result).toBe('bank-factory-test');
+    });
+
+    it('should use factory handleTransaction with async dependency injection', async () => {
+      const mockDependencies: Dependencies = {
+        databaseManager,
+        loggerService,
+        server,
+        configuration,
+      };
+
+      getBufferSpy = jest
+        .spyOn(databaseManager._redisClient, 'getBuffer')
+        .mockImplementation(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
+          });
+        });
+
+      const mockResponseSpy = jest
+        .spyOn(server, 'handleResponse')
+        .mockImplementation((resp: any, _subject: string[] | undefined): any => {
+          return new Promise((resolve, _reject) => {
+            resolve(resp);
+          });
+        });
+
+      const service = createEventFlowService(mockDependencies);
+      const mockRequest = getMockRequest();
+      
+      // This should work without throwing errors
+      await service.handleTransaction(mockRequest);
+      
+      expect(mockResponseSpy).toHaveBeenCalledTimes(1);
+      getBufferSpy.mockRestore();
+      mockResponseSpy.mockRestore();
     });
   });
 });

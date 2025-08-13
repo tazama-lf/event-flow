@@ -1,22 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as calc from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { createConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
+import { Condition } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/Condition';
 import {
+  AccountConditionResponse,
+  EntityConditionResponse,
+} from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
+import {
+  configuration,
   databaseManager,
   initializeDB,
   loggerService,
   runServer,
   server,
 } from '../../src';
-import { configuration } from '../../src';
-import { handleTransaction } from '../../src/logic.service';
+import { handleTransaction, sanitizeConditions } from '../../src/logic.service';
 
 jest.mock('@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg');
 
 const DATE = {
   NOW: new Date().toISOString(),
-  VALID: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString(),
-  EXPIRED: new Date(new Date().setDate(new Date().getDate() - 7)).toISOString(),
+  NEXTWEEK: new Date(
+    new Date().setDate(new Date().getDate() + 7),
+  ).toISOString(),
+  LASTWEEK: new Date(
+    new Date().setDate(new Date().getDate() - 7),
+  ).toISOString(),
+  YESTERDAY: new Date(
+    new Date().setDate(new Date().getDate() - 1),
+  ).toISOString(),
+  TOMORROW: new Date(
+    new Date().setDate(new Date().getDate() + 1),
+  ).toISOString(),
 };
 
 const getMockRequest = () => {
@@ -25,12 +40,12 @@ const getMockRequest = () => {
       TxTp: 'pacs.002.001.12',
       FIToFIPmtSts: {
         GrpHdr: {
-          MsgId: '7717fa54e38d46e397addad281481065',
+          MsgId: crypto.randomUUID().replaceAll('-', ''),
           CreDtTm: DATE.NOW,
         },
         TxInfAndSts: {
-          OrgnlInstrId: '5ab4fc7355de4ef8a75b78b00a681ed2',
-          OrgnlEndToEndId: '55625744af194b50b2055ba9d2502e74',
+          OrgnlInstrId: crypto.randomUUID().replaceAll('-', ''),
+          OrgnlEndToEndId: crypto.randomUUID().replaceAll('-', ''),
           TxSts: 'ACCC',
           ChrgsInf: [
             {
@@ -46,7 +61,7 @@ const getMockRequest = () => {
               Agt: { FinInstnId: { ClrSysMmbId: { MmbId: 'dfsp002' } } },
             },
           ],
-          AccptncDtTm: '2024-01-02T02:22:00.000Z',
+          AccptncDtTm: new Date(DATE.NOW),
           InstgAgt: { FinInstnId: { ClrSysMmbId: { MmbId: 'dfsp001' } } },
           InstdAgt: { FinInstnId: { ClrSysMmbId: { MmbId: 'dfsp002' } } },
         },
@@ -79,7 +94,7 @@ const getMockRequest = () => {
       cdtrAcctId: '04b003069709403a9a365fe0173cf914',
       dbtrAcctId: '8354f4d7af5547e2ade0f16c77af9a7c',
       amt: { amt: 555.55, ccy: 'USD' },
-      creDtTm: '2024-01-02T02:21:00.000Z',
+      creDtTm: DATE.NOW,
     },
     metaData: { prcgTmDP: 0, prcgTmED: 0 },
   };
@@ -87,45 +102,45 @@ const getMockRequest = () => {
 
 const getMockEntityCondition = () => {
   return {
-    ntty: { id: '+27733161225', schmeNm: { prtry: 'MSISDN' } },
+    ntty: { id: 'testEntityId', schmeNm: { prtry: 'MSISDN' } },
     conditions: [
       {
-        condId: '57bccf4497b64cd99e92d0a7f3352d41',
+        condId: crypto.randomUUID().replaceAll('-', ''),
         condTp: 'overridable-block',
         incptnDtTm: DATE.NOW,
-        xprtnDtTm: DATE.EXPIRED,
+        xprtnDtTm: DATE.LASTWEEK,
         condRsn: 'R001',
-        usr: 'bob',
-        creDtTm: '2024-01-01T23:00:00.999Z',
+        usr: 'test',
+        creDtTm: DATE.NOW,
         prsptvs: [
           {
             prsptv: 'governed_as_debtor_by',
             evtTp: ['pacs.0080.01.10', 'pacs.002.001.12'],
             incptnDtTm: DATE.NOW,
-            xprtnDtTm: DATE.EXPIRED,
+            xprtnDtTm: DATE.LASTWEEK,
           },
           {
             prsptv: 'governed_as_creditor_by',
             evtTp: ['pacs.008.001.10', 'pacs.002.001.12'],
             incptnDtTm: DATE.NOW,
-            xprtnDtTm: DATE.EXPIRED,
+            xprtnDtTm: DATE.LASTWEEK,
           },
         ],
       },
       {
-        condId: '57bccf4497b64cd99e92d0a7f3352d52',
+        condId: crypto.randomUUID().replaceAll('-', ''),
         condTp: 'override',
         incptnDtTm: DATE.NOW,
-        xprtnDtTm: DATE.EXPIRED,
+        xprtnDtTm: DATE.LASTWEEK,
         condRsn: 'R002',
-        usr: 'jones',
-        creDtTm: '2024-01-02T23:00:00.999Z',
+        usr: 'test',
+        creDtTm: DATE.NOW,
         prsptvs: [
           {
-            prsptv: 'governed_as_debtor_by',
+            prsptv: 'governed_as_creditor_by',
             evtTp: ['pacs.002.001.12'],
             incptnDtTm: DATE.NOW,
-            xprtnDtTm: DATE.EXPIRED,
+            xprtnDtTm: DATE.LASTWEEK,
           },
         ],
       },
@@ -136,31 +151,31 @@ const getMockEntityCondition = () => {
 const getMockAccountCondition = () => {
   return {
     acct: {
-      id: '1010101010',
+      id: 'testAccountId',
       schmeNm: { prtry: 'Mxx' },
       agt: { finInstnId: { clrSysMmbId: { mmbId: 'dfsp001' } } },
     },
     conditions: [
       {
-        condId: '26819',
+        condId: crypto.randomUUID().replaceAll('-', ''),
         condTp: 'non-overridable-block',
         incptnDtTm: DATE.NOW,
-        xprtnDtTm: DATE.EXPIRED,
+        xprtnDtTm: DATE.LASTWEEK,
         condRsn: 'R001',
-        usr: 'bob',
-        creDtTm: '2024-08-23T11:46:53.091Z',
+        usr: 'test',
+        creDtTm: DATE.NOW,
         prsptvs: [
           {
             prsptv: 'governed_as_creditor_by',
             evtTp: ['pacs.008.001.10', 'pacs.002.001.12'],
             incptnDtTm: DATE.NOW,
-            xprtnDtTm: DATE.EXPIRED,
+            xprtnDtTm: DATE.LASTWEEK,
           },
           {
             prsptv: 'governed_as_debtor_by',
             evtTp: ['pacs.008.001.10', 'pacs.002.001.12'],
             incptnDtTm: DATE.NOW,
-            xprtnDtTm: DATE.EXPIRED,
+            xprtnDtTm: DATE.LASTWEEK,
           },
         ],
       },
@@ -191,206 +206,1016 @@ describe('Event Flow', () => {
     jest.spyOn(calc, 'CalculateDuration').mockReturnValue(0);
   });
 
-  describe('handleTransaction logic', () => {
-    it("non-overridable-block - outcome: block'", async () => {
-      /*
-        3 Unexpired conditions
+  describe('Condition Testing', () => {
+    describe('No Conditions', () => {
+      afterAll(() => {
+        getBufferSpy.mockRestore();
+      });
+      it("No Conditions - outcome: none'", async () => {
+        /*
+        0 conditions
         Interdiction alerting ENABLED
-        non-overridable-block priority precedence
       */
-      const req = getMockRequest();
+        const req = getMockRequest();
 
-      const entityConditions = getMockEntityCondition();
-      const accountConditions = getMockAccountCondition();
+        configuration.SUPPRESS_ALERTS = false;
 
-      entityConditions.conditions[0].condTp = 'overridable-block';
-      entityConditions.conditions[0].xprtnDtTm = DATE.VALID;
-
-      entityConditions.conditions[1].condTp = 'override';
-      entityConditions.conditions[1].xprtnDtTm = DATE.VALID;
-
-      accountConditions.conditions[0].condTp = 'non-overridable-block';
-      accountConditions.conditions[0].xprtnDtTm = DATE.VALID;
-
-      configuration.SUPPRESS_ALERTS = false;
-
-      getBufferSpy = jest
-        .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(entityConditions) as Buffer);
+        getBufferSpy = jest
+          .spyOn(databaseManager._redisClient, 'getBuffer')
+          .mockImplementation(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
           });
-        })
-        .mockImplementationOnce(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(accountConditions) as Buffer);
-          });
-        })
-        .mockImplementation(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(Buffer.from(''));
-          });
+
+        const ruleRes = {
+          cfg: 'none',
+          id: 'EFRuP@1.0.0',
+          prcgTm: 0,
+          subRuleRef: 'none',
+        };
+
+        await handleTransaction(req);
+        expect(responseSpy).toHaveBeenCalledTimes(1);
+        expect(responseSpy).toHaveBeenCalledWith({
+          ...req,
+          ruleResult: ruleRes,
         });
-
-      const ruleRes = {
-        cfg: 'none',
-        id: 'EFRuP@1.0.0',
-        prcgTm: 0,
-        subRuleRef: 'block',
-      };
-
-      await handleTransaction(req);
-      expect(responseSpy).toHaveBeenCalledTimes(2); // + 1 alert
-      expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
+      });
     });
 
-    it("overridable-block - outcome: block'", async () => {
-      /*
-        1 Unexpired conditions
-        Interdiction alerting ENABLED
-        Only overridable-block
-      */
-      const req = getMockRequest();
-
-      const entityConditions = getMockEntityCondition();
-      const accountConditions = getMockAccountCondition();
-
-      entityConditions.conditions[0].condTp = 'overridable-block';
-      entityConditions.conditions[0].xprtnDtTm = DATE.VALID;
-
-      entityConditions.conditions[1].condTp = 'override';
-      entityConditions.conditions[1].xprtnDtTm = DATE.EXPIRED;
-
-      accountConditions.conditions[0].condTp = 'non-overridable-block';
-      accountConditions.conditions[0].xprtnDtTm = DATE.EXPIRED;
-
-      configuration.SUPPRESS_ALERTS = false;
-
-      getBufferSpy = jest
-        .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(entityConditions) as Buffer);
-          });
-        })
-        .mockImplementationOnce(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(accountConditions) as Buffer);
-          });
-        })
-        .mockImplementation(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(Buffer.from(''));
-          });
-        });
-
-      const ruleRes = {
-        cfg: 'none',
-        id: 'EFRuP@1.0.0',
-        prcgTm: 0,
-        subRuleRef: 'block',
+    describe('Condition Perspectives', () => {
+      const getPerspectiveAccountCondition = (
+        prsptvs: Pick<
+          Condition,
+          'incptnDtTm' | 'xprtnDtTm' | 'prsptv' | 'evtTp'
+        >[],
+      ): AccountConditionResponse => {
+        return {
+          acct: {
+            id: 'testAccountId',
+            schmeNm: { prtry: 'Mxx' },
+            agt: { finInstnId: { clrSysMmbId: { mmbId: 'dfsp001' } } },
+          },
+          conditions: [
+            {
+              condId: crypto.randomUUID().replaceAll('-', ''),
+              condTp: 'non-overridable-block',
+              incptnDtTm: DATE.LASTWEEK,
+              xprtnDtTm: DATE.NEXTWEEK,
+              condRsn: 'R001',
+              usr: 'test',
+              creDtTm: DATE.LASTWEEK,
+              prsptvs: prsptvs,
+            },
+          ],
+        };
+      };
+      const getPerspectiveEntityCondition = (
+        prsptvs: Pick<
+          Condition,
+          'incptnDtTm' | 'xprtnDtTm' | 'prsptv' | 'evtTp'
+        >[],
+      ): EntityConditionResponse => {
+        return {
+          ntty: { id: 'testEntityId', schmeNm: { prtry: 'MSISDN' } },
+          conditions: [
+            {
+              condId: crypto.randomUUID().replaceAll('-', ''),
+              condTp: 'non-overridable-block',
+              incptnDtTm: DATE.LASTWEEK,
+              xprtnDtTm: DATE.NEXTWEEK,
+              condRsn: 'R001',
+              usr: 'test',
+              creDtTm: DATE.LASTWEEK,
+              prsptvs: prsptvs,
+            },
+          ],
+        };
+      };
+      const createPerspective = (
+        idType: 'entity' | 'account' = 'entity',
+        perspective: 'creditor' | 'debtor' | 'both' = 'both',
+      ): {
+        prsptv: string;
+        evtTp: string[];
+        incptnDtTm: string;
+        xprtnDtTm: string;
+      }[] => {
+        switch (perspective) {
+          case 'creditor':
+            return [
+              {
+                prsptv:
+                  idType == 'entity'
+                    ? 'governed_as_creditor_by'
+                    : 'governed_as_creditor_account_by',
+                evtTp: [
+                  'pain.001.001.11',
+                  'pain.013.001.09',
+                  'pacs.008.001.10',
+                  'pacs.002.001.12',
+                ],
+                incptnDtTm: DATE.LASTWEEK,
+                xprtnDtTm: DATE.NEXTWEEK,
+              },
+            ];
+          case 'debtor':
+            return [
+              {
+                prsptv:
+                  idType == 'entity'
+                    ? 'governed_as_debtor_by'
+                    : 'governed_as_debtor_account_by',
+                evtTp: [
+                  'pain.001.001.11',
+                  'pain.013.001.09',
+                  'pacs.008.001.10',
+                  'pacs.002.001.12',
+                ],
+                incptnDtTm: DATE.LASTWEEK,
+                xprtnDtTm: DATE.NEXTWEEK,
+              },
+            ];
+          case 'both':
+            return [
+              {
+                prsptv:
+                  idType == 'entity'
+                    ? 'governed_as_debtor_by'
+                    : 'governed_as_debtor_account_by',
+                evtTp: [
+                  'pain.001.001.11',
+                  'pain.013.001.09',
+                  'pacs.008.001.10',
+                  'pacs.002.001.12',
+                ],
+                incptnDtTm: DATE.LASTWEEK,
+                xprtnDtTm: DATE.NEXTWEEK,
+              },
+              {
+                prsptv:
+                  idType == 'entity'
+                    ? 'governed_as_creditor_by'
+                    : 'governed_as_creditor_account_by',
+                evtTp: [
+                  'pain.001.001.11',
+                  'pain.013.001.09',
+                  'pacs.008.001.10',
+                  'pacs.002.001.12',
+                ],
+                incptnDtTm: DATE.LASTWEEK,
+                xprtnDtTm: DATE.NEXTWEEK,
+              },
+            ];
+        }
       };
 
-      await handleTransaction(req);
-      expect(responseSpy).toHaveBeenCalledTimes(2); // + alert for block
-      expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
+      it('Debtor - governed_as_debtor_by governed_as_debtor_account_by. Creditor - governed_as_creditor_by governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'creditor'),
+        );
+        const creditorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        const conditions = sanitizeConditions(
+          [
+            ...creditorEntityCondition.conditions,
+            ...creditorAccountCondition.conditions,
+          ],
+          [
+            ...debtorEntityCondition.conditions,
+            ...debtorAccountCondition.conditions,
+          ],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_by governed_as_debtor_account_by. Creditor - governed_as_creditor_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'creditor'),
+        );
+        // No Creditor Account Condition
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        const conditions = sanitizeConditions(
+          [...creditorEntityCondition.conditions],
+          [
+            ...debtorEntityCondition.conditions,
+            ...debtorAccountCondition.conditions,
+          ],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_by governed_as_debtor_account_by. Creditor - governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        // No Creditor Entity Condition
+        const creditorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        const conditions = sanitizeConditions(
+          [...creditorAccountCondition.conditions],
+          [
+            ...debtorEntityCondition.conditions,
+            ...debtorAccountCondition.conditions,
+          ],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_by governed_as_debtor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        // No Creditor Entity Condition
+        // No Creditor Account Condition
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        debtorEntityCondition.conditions[0].prsptvs = createPerspective(
+          'entity',
+          'debtor',
+        );
+        debtorAccountCondition.conditions[0].prsptvs = createPerspective(
+          'account',
+          'debtor',
+        );
+
+        const conditions = sanitizeConditions(
+          [],
+          [
+            ...debtorEntityCondition.conditions,
+            ...debtorAccountCondition.conditions,
+          ],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_by. Creditor - governed_as_creditor_by governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'creditor'),
+        );
+        const creditorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        // No Debtor Account Condition
+
+        const conditions = sanitizeConditions(
+          [
+            ...creditorEntityCondition.conditions,
+            ...creditorAccountCondition.conditions,
+          ],
+          [...debtorEntityCondition.conditions],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_by. Creditor - governed_as_creditor_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'creditor'),
+        );
+        // No Creditor Account Condition
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        // No Debtor Account Condition
+
+        const conditions = sanitizeConditions(
+          [...creditorEntityCondition.conditions],
+          [...debtorEntityCondition.conditions],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_by. Creditor - governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        // No Creditor Entity Condition
+
+        const creditorAccountCondition = getPerspectiveEntityCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        // No Debtor Account Condition
+
+        const conditions = sanitizeConditions(
+          [...creditorAccountCondition.conditions],
+          [...debtorEntityCondition.conditions],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        // No Creditor Entity Condition
+
+        // No Creditor Account Condition
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        // No Debtor Account Condition
+
+        const conditions = sanitizeConditions(
+          [],
+          [...debtorEntityCondition.conditions],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual(['non-overridable-block']);
+      });
+
+      it('Debtor - governed_as_debtor_account_by. Creditor - governed_as_creditor_by governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'creditor'),
+        );
+        const creditorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        // No Debtor Entity Condition
+
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        const conditions = sanitizeConditions(
+          [
+            ...creditorEntityCondition.conditions,
+            ...creditorAccountCondition.conditions,
+          ],
+          [...debtorAccountCondition.conditions],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_account_by. Creditor - governed_as_creditor_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'creditor'),
+        );
+
+        // No Creditor Account Condition
+
+        // No Debtor Entity Condition
+
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        const conditions = sanitizeConditions(
+          [...creditorEntityCondition.conditions],
+          [...debtorAccountCondition.conditions],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_account_by. Creditor - governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        // No Creditor Entity Condition
+
+        const creditorAccountCondition = getPerspectiveEntityCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        // No Debtor Entity Condition
+
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        const conditions = sanitizeConditions(
+          [...creditorAccountCondition.conditions],
+          [...debtorAccountCondition.conditions],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Debtor - governed_as_debtor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        // No Creditor Entity Condition
+
+        // No Creditor Account Condition
+
+        // No Debtor Entity Condition
+
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        const conditions = sanitizeConditions(
+          [],
+          [...debtorAccountCondition.conditions],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual(['non-overridable-block']);
+      });
+
+      it('Creditor - governed_as_creditor_by governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveAccountCondition(
+          createPerspective('entity', 'creditor'),
+        );
+
+        const creditorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        // No Debtor Entity Condition
+
+        // No Debtor Account Condition
+
+        const conditions = sanitizeConditions(
+          [
+            ...creditorEntityCondition.conditions,
+            ...creditorAccountCondition.conditions,
+          ],
+          [],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual([
+          'non-overridable-block',
+          'non-overridable-block',
+        ]);
+      });
+
+      it('Creditor - governed_as_creditor_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveAccountCondition(
+          createPerspective('entity', 'creditor'),
+        );
+
+        // No Creditor Account Condition
+
+        // No Debtor Entity Condition
+
+        // No Debtor Account Condition
+
+        const conditions = sanitizeConditions(
+          [...creditorEntityCondition.conditions],
+          [],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual(['non-overridable-block']);
+      });
+
+      it('Creditor - governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        // No Creditor Entity Condition
+
+        const creditorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        // No Debtor Entity Condition
+
+        // No Debtor Account Condition
+
+        const conditions = sanitizeConditions(
+          [...creditorAccountCondition.conditions],
+          [],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        expect(conditions).toEqual(['non-overridable-block']);
+      });
+
+      it('None', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        // No Creditor Entity Condition
+
+        // No Creditor Account Condition
+
+        // No Debtor Entity Condition
+
+        // No Debtor Account Condition
+
+        const conditions = sanitizeConditions([], [], new Date(DATE.NOW), TxTp);
+
+        expect(conditions).toEqual([]);
+      });
+
+      it('Creditor - governed_as_debtor_by governed_as_debtor_account_by. Debtor - governed_as_creditor_by governed_as_creditor_account_by', async () => {
+        const TxTp = 'pacs.002.001.12';
+
+        const creditorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'debtor'),
+        );
+        const creditorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'debtor'),
+        );
+
+        const debtorEntityCondition = getPerspectiveEntityCondition(
+          createPerspective('entity', 'creditor'),
+        );
+        const debtorAccountCondition = getPerspectiveAccountCondition(
+          createPerspective('account', 'creditor'),
+        );
+
+        const conditions = sanitizeConditions(
+          [
+            ...creditorEntityCondition.conditions,
+            ...creditorAccountCondition.conditions,
+          ],
+          [
+            ...debtorEntityCondition.conditions,
+            ...debtorAccountCondition.conditions,
+          ],
+          new Date(DATE.NOW),
+          TxTp,
+        );
+
+        // all conditions discarded
+        expect(conditions).toEqual([]);
+      });
     });
 
-    it("override - outcome: override'", async () => {
-      /*
-        1 Unexpired conditions
-        Only override
-      */
-      const req = getMockRequest();
+    describe('Condition Types', () => {
+      it("non-overridable-block - outcome: block'", async () => {
+        /*
+            3 Unexpired conditions
+            Interdiction alerting ENABLED
+            non-overridable-block priority precedence
+          */
+        const req = getMockRequest();
 
-      const entityConditions = getMockEntityCondition();
-      const accountConditions = getMockAccountCondition();
+        const creditorEntityCondition = getMockEntityCondition();
+        const creditorAccountCondition = getMockAccountCondition();
 
-      entityConditions.conditions[0].condTp = 'overridable-block';
-      entityConditions.conditions[0].xprtnDtTm = DATE.EXPIRED;
+        creditorEntityCondition.conditions[0].condTp = 'overridable-block';
+        creditorEntityCondition.conditions[0].xprtnDtTm = DATE.NEXTWEEK;
 
-      entityConditions.conditions[1].condTp = 'override';
-      entityConditions.conditions[1].xprtnDtTm = DATE.VALID;
+        creditorEntityCondition.conditions[1].condTp = 'override';
+        creditorEntityCondition.conditions[1].xprtnDtTm = DATE.NEXTWEEK;
 
-      accountConditions.conditions[0].condTp = 'non-overridable-block';
-      accountConditions.conditions[0].xprtnDtTm = DATE.EXPIRED;
+        creditorAccountCondition.conditions[0].condTp = 'non-overridable-block';
+        creditorAccountCondition.conditions[0].xprtnDtTm = DATE.NEXTWEEK;
 
-      getBufferSpy = jest
-        .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(entityConditions) as Buffer);
+        configuration.SUPPRESS_ALERTS = false;
+
+        getBufferSpy = jest
+          .spyOn(databaseManager._redisClient, 'getBuffer')
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(
+                createConditionsBuffer(creditorEntityCondition) as Buffer,
+              );
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(
+                createConditionsBuffer(creditorAccountCondition) as Buffer,
+              );
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          })
+          .mockImplementation(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
           });
-        })
-        .mockImplementationOnce(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(accountConditions) as Buffer);
-          });
-        })
-        .mockImplementation(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(Buffer.from(''));
-          });
+
+        const expectedRuleRes = {
+          cfg: 'none',
+          id: 'EFRuP@1.0.0',
+          prcgTm: 0,
+          subRuleRef: 'block',
+        };
+
+        await handleTransaction(req);
+        expect(responseSpy).toHaveBeenCalledTimes(2); // + 1 alert
+        expect(responseSpy).toHaveBeenCalledWith({
+          ...req,
+          ruleResult: expectedRuleRes,
         });
+      });
 
-      const ruleRes = {
-        cfg: 'none',
-        id: 'EFRuP@1.0.0',
-        prcgTm: 0,
-        subRuleRef: 'override',
-      };
+      it("overridable-block - outcome: block'", async () => {
+        /*
+          1 Unexpired conditions
+          Interdiction alerting ENABLED
+          Only overridable-block
+        */
+        const req = getMockRequest();
 
-      await handleTransaction(req);
-      expect(responseSpy).toHaveBeenCalledTimes(1);
-      expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
-    });
+        const entityConditions = getMockEntityCondition();
+        const accountConditions = getMockAccountCondition();
 
-    it("none - outcome: none'", async () => {
-      /*
-        0 Unexpired conditions
-      */
-      const req = getMockRequest();
+        entityConditions.conditions[0].condTp = 'overridable-block';
+        entityConditions.conditions[0].xprtnDtTm = DATE.NEXTWEEK;
 
-      const entityConditions = getMockEntityCondition();
-      const accountConditions = getMockAccountCondition();
+        entityConditions.conditions[1].condTp = 'override';
+        entityConditions.conditions[1].xprtnDtTm = DATE.LASTWEEK;
 
-      entityConditions.conditions[0].condTp = 'overridable-block';
-      entityConditions.conditions[0].xprtnDtTm = DATE.EXPIRED;
+        accountConditions.conditions[0].condTp = 'non-overridable-block';
+        accountConditions.conditions[0].xprtnDtTm = DATE.LASTWEEK;
 
-      entityConditions.conditions[1].condTp = 'override';
-      entityConditions.conditions[1].xprtnDtTm = DATE.EXPIRED;
+        configuration.SUPPRESS_ALERTS = false;
 
-      accountConditions.conditions[0].condTp = 'non-overridable-block';
-      accountConditions.conditions[0].xprtnDtTm = DATE.EXPIRED;
-
-      getBufferSpy = jest
-        .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementationOnce(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(entityConditions) as Buffer);
+        getBufferSpy = jest
+          .spyOn(databaseManager._redisClient, 'getBuffer')
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(createConditionsBuffer(entityConditions) as Buffer);
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(createConditionsBuffer(accountConditions) as Buffer);
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
           });
-        })
-        .mockImplementationOnce(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(accountConditions) as Buffer);
-          });
-        })
-        .mockImplementation(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(Buffer.from(''));
-          });
+
+        const expectedRuleRes = {
+          cfg: 'none',
+          id: 'EFRuP@1.0.0',
+          prcgTm: 0,
+          subRuleRef: 'block',
+        };
+
+        await handleTransaction(req);
+        expect(responseSpy).toHaveBeenCalledTimes(2); // + alert for block
+        expect(responseSpy).toHaveBeenCalledWith({
+          ...req,
+          ruleResult: expectedRuleRes,
         });
+      });
 
-      const ruleRes = {
-        cfg: 'none',
-        id: 'EFRuP@1.0.0',
-        prcgTm: 0,
-        subRuleRef: 'none',
-      };
+      it("override - outcome: override'", async () => {
+        /*
+          1 Unexpired conditions
+          Only override
+        */
+        const req = getMockRequest();
 
-      await handleTransaction(req);
-      expect(responseSpy).toHaveBeenCalledTimes(1);
-      expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
+        const creditorEntityCondition = getMockEntityCondition();
+        const creditorAccountCondition = getMockAccountCondition();
+
+        creditorEntityCondition.conditions[0].condTp = 'overridable-block';
+        creditorEntityCondition.conditions[0].xprtnDtTm = DATE.LASTWEEK;
+
+        creditorEntityCondition.conditions[1].condTp = 'override';
+        creditorEntityCondition.conditions[1].xprtnDtTm = DATE.NEXTWEEK;
+
+        creditorAccountCondition.conditions[0].condTp = 'non-overridable-block';
+        creditorAccountCondition.conditions[0].xprtnDtTm = DATE.LASTWEEK;
+
+        getBufferSpy = jest
+          .spyOn(databaseManager._redisClient, 'getBuffer')
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(
+                createConditionsBuffer(creditorEntityCondition) as Buffer,
+              );
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(
+                createConditionsBuffer(creditorAccountCondition) as Buffer,
+              );
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          });
+
+        const expectedRuleRes = {
+          cfg: 'none',
+          id: 'EFRuP@1.0.0',
+          prcgTm: 0,
+          subRuleRef: 'override',
+        };
+
+        await handleTransaction(req);
+        expect(responseSpy).toHaveBeenCalledTimes(1);
+        expect(responseSpy).toHaveBeenCalledWith({
+          ...req,
+          ruleResult: expectedRuleRes,
+        });
+      });
+
+      it("override - outcome: none'", async () => {
+        /*
+          1 Unexpired conditions
+          override discarded - governed_as_creditor_by on debtor
+        */
+        const req = getMockRequest();
+
+        const debtorEntityCondition = getMockEntityCondition();
+        const creditorAccountCondition = getMockAccountCondition();
+
+        debtorEntityCondition.conditions[0].condTp = 'overridable-block';
+        debtorEntityCondition.conditions[0].xprtnDtTm = DATE.LASTWEEK;
+
+        debtorEntityCondition.conditions[1].condTp = 'override';
+        debtorEntityCondition.conditions[1].xprtnDtTm = DATE.NEXTWEEK;
+
+        creditorAccountCondition.conditions[0].condTp = 'non-overridable-block';
+        creditorAccountCondition.conditions[0].xprtnDtTm = DATE.LASTWEEK;
+
+        getBufferSpy = jest
+          .spyOn(databaseManager._redisClient, 'getBuffer')
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(
+                createConditionsBuffer(creditorAccountCondition) as Buffer,
+              );
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(createConditionsBuffer(debtorEntityCondition) as Buffer);
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          });
+
+        const expectedRuleRes = {
+          cfg: 'none',
+          id: 'EFRuP@1.0.0',
+          prcgTm: 0,
+          subRuleRef: 'none',
+        };
+
+        await handleTransaction(req);
+        expect(responseSpy).toHaveBeenCalledTimes(1);
+        expect(responseSpy).toHaveBeenCalledWith({
+          ...req,
+          ruleResult: expectedRuleRes,
+        });
+      });
+
+      it("none - outcome: none'", async () => {
+        /*
+          0 Unexpired conditions
+        */
+        const req = getMockRequest();
+
+        const entityConditions = getMockEntityCondition();
+        const accountConditions = getMockAccountCondition();
+
+        entityConditions.conditions[0].condTp = 'overridable-block';
+        entityConditions.conditions[0].xprtnDtTm = DATE.LASTWEEK;
+
+        entityConditions.conditions[1].condTp = 'override';
+        entityConditions.conditions[1].xprtnDtTm = DATE.LASTWEEK;
+
+        accountConditions.conditions[0].condTp = 'non-overridable-block';
+        accountConditions.conditions[0].xprtnDtTm = DATE.LASTWEEK;
+
+        getBufferSpy = jest
+          .spyOn(databaseManager._redisClient, 'getBuffer')
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(createConditionsBuffer(entityConditions) as Buffer);
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(createConditionsBuffer(accountConditions) as Buffer);
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          });
+
+        const expectedRuleRes = {
+          cfg: 'none',
+          id: 'EFRuP@1.0.0',
+          prcgTm: 0,
+          subRuleRef: 'none',
+        };
+
+        await handleTransaction(req);
+        expect(responseSpy).toHaveBeenCalledTimes(1);
+        expect(responseSpy).toHaveBeenCalledWith({
+          ...req,
+          ruleResult: expectedRuleRes,
+        });
+      });
+
+      it("non-overridable-block - outcome: block (no expire)'", async () => {
+        /*
+          2 Non Expiring conditions
+        */
+        const req = getMockRequest();
+
+        const creditorEntityCondition = getMockEntityCondition();
+        const debitorEntityCondition = getMockEntityCondition();
+
+        creditorEntityCondition.conditions[0].condTp = 'non-overridable-block';
+        creditorEntityCondition.conditions[0].xprtnDtTm = DATE.LASTWEEK;
+
+        creditorEntityCondition.conditions[1].condTp = 'non-overridable-block';
+        creditorEntityCondition.conditions[1].xprtnDtTm = '';
+
+        debitorEntityCondition.conditions[0].condTp = 'non-overridable-block';
+        debitorEntityCondition.conditions[0].xprtnDtTm = '';
+
+        getBufferSpy = jest
+          .spyOn(databaseManager._redisClient, 'getBuffer')
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(
+                createConditionsBuffer(creditorEntityCondition) as Buffer,
+              );
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(createConditionsBuffer(debitorEntityCondition) as Buffer);
+            });
+          })
+          .mockImplementationOnce(async (_key: any) => {
+            return new Promise((resolve, _reject) => {
+              resolve(Buffer.from(''));
+            });
+          });
+
+        const expectedRuleRes = {
+          cfg: 'none',
+          id: 'EFRuP@1.0.0',
+          prcgTm: 0,
+          subRuleRef: 'block',
+        };
+
+        await handleTransaction(req);
+        expect(responseSpy).toHaveBeenCalledTimes(1);
+        expect(responseSpy).toHaveBeenCalledWith({
+          ...req,
+          ruleResult: expectedRuleRes,
+        });
+      });
     });
   });
 
@@ -404,10 +1229,10 @@ describe('Event Flow', () => {
       const entityConditions = getMockEntityCondition();
 
       entityConditions.conditions[0].condTp = 'overridable-block';
-      entityConditions.conditions[0].xprtnDtTm = DATE.VALID;
+      entityConditions.conditions[0].xprtnDtTm = DATE.NEXTWEEK;
 
       entityConditions.conditions[1].condTp = 'override';
-      entityConditions.conditions[1].xprtnDtTm = DATE.VALID;
+      entityConditions.conditions[1].xprtnDtTm = DATE.NEXTWEEK;
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
@@ -419,11 +1244,26 @@ describe('Event Flow', () => {
             corruptedBuffer[0] = Math.floor(Math.random() * 256);
             resolve(corruptedBuffer);
           });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
+          });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
+          });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
+          });
         });
 
       const logSpy = jest.spyOn(loggerService, 'error');
 
-      const ruleRes = {
+      const expectedRuleRes = {
         cfg: 'none',
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
@@ -434,7 +1274,10 @@ describe('Event Flow', () => {
       expect(responseSpy).toHaveBeenCalledTimes(1);
       expect(logSpy).toHaveBeenCalledTimes(1);
       expect(logSpy).toHaveBeenCalledWith('Could not decode a condition');
-      expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
+      expect(responseSpy).toHaveBeenCalledWith({
+        ...req,
+        ruleResult: expectedRuleRes,
+      });
     });
 
     it("bad CMS'", async () => {
@@ -444,13 +1287,13 @@ describe('Event Flow', () => {
       */
       const req = getMockRequest();
 
-      const entityConditions = getMockEntityCondition();
+      const creditorEntityCondition = getMockEntityCondition();
 
-      entityConditions.conditions[0].condTp = 'non-overridable-block';
-      entityConditions.conditions[0].xprtnDtTm = DATE.VALID;
+      creditorEntityCondition.conditions[0].condTp = 'non-overridable-block';
+      creditorEntityCondition.conditions[0].xprtnDtTm = DATE.NEXTWEEK;
 
-      entityConditions.conditions[1].condTp = 'non-overridable-block';
-      entityConditions.conditions[1].xprtnDtTm = DATE.VALID;
+      creditorEntityCondition.conditions[1].condTp = 'non-overridable-block';
+      creditorEntityCondition.conditions[1].xprtnDtTm = DATE.NEXTWEEK;
 
       configuration.SUPPRESS_ALERTS = false;
 
@@ -458,7 +1301,22 @@ describe('Event Flow', () => {
         .spyOn(databaseManager._redisClient, 'getBuffer')
         .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(entityConditions) as Buffer);
+            resolve(createConditionsBuffer(creditorEntityCondition) as Buffer);
+          });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
+          });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
+          });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
           });
         });
 
@@ -475,7 +1333,7 @@ describe('Event Flow', () => {
           },
         );
 
-      const ruleRes = {
+      const expectedRuleRes = {
         cfg: 'none',
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
@@ -491,7 +1349,10 @@ describe('Event Flow', () => {
         `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
         configuration.functionName,
       );
-      expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
+      expect(responseSpy).toHaveBeenCalledWith({
+        ...req,
+        ruleResult: expectedRuleRes,
+      });
     });
 
     it("bad final response'", async () => {
@@ -500,19 +1361,34 @@ describe('Event Flow', () => {
       */
       const req = getMockRequest();
 
-      const entityConditions = getMockEntityCondition();
+      const creditorEntityCondition = getMockEntityCondition();
 
-      entityConditions.conditions[0].condTp = 'override';
-      entityConditions.conditions[0].xprtnDtTm = DATE.VALID;
+      creditorEntityCondition.conditions[0].condTp = 'override';
+      creditorEntityCondition.conditions[0].xprtnDtTm = DATE.NEXTWEEK;
 
-      entityConditions.conditions[1].condTp = 'override';
-      entityConditions.conditions[1].xprtnDtTm = DATE.VALID;
+      creditorEntityCondition.conditions[1].condTp = 'override';
+      creditorEntityCondition.conditions[1].xprtnDtTm = DATE.NEXTWEEK;
 
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
         .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
-            resolve(createConditionsBuffer(entityConditions) as Buffer);
+            resolve(createConditionsBuffer(creditorEntityCondition) as Buffer);
+          });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
+          });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
+          });
+        })
+        .mockImplementationOnce(async (_key: any) => {
+          return new Promise((resolve, _reject) => {
+            resolve(Buffer.from(''));
           });
         });
 
@@ -522,7 +1398,7 @@ describe('Event Flow', () => {
         .spyOn(server, 'handleResponse')
         .mockRejectedValueOnce('BAD');
 
-      const ruleRes = {
+      const expectedRuleRes = {
         cfg: 'none',
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
@@ -538,7 +1414,10 @@ describe('Event Flow', () => {
         `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
         configuration.functionName,
       );
-      expect(responseSpy).toHaveBeenCalledWith({ ...req, ruleResult: ruleRes });
+      expect(responseSpy).toHaveBeenCalledWith({
+        ...req,
+        ruleResult: expectedRuleRes,
+      });
     });
   });
 });

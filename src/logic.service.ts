@@ -1,14 +1,11 @@
-import {
-  type RuleRequest,
-  type RuleResult,
-} from '@tazama-lf/frms-coe-lib/lib/interfaces';
-import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
 import { CalculateDuration } from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
-import { type ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
+import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
+import type { RuleRequest, RuleResult } from '@tazama-lf/frms-coe-lib/lib/interfaces';
+import type { ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
 import { databaseManager, loggerService, server } from '.';
 import { configuration } from './';
 
-export const handleTransaction = async (req: unknown): Promise<void> => {
+const handleTransaction = async (req: unknown): Promise<void> => {
   const startTime = process.hrtime.bigint();
   const msg = req as RuleRequest;
 
@@ -19,81 +16,108 @@ export const handleTransaction = async (req: unknown): Promise<void> => {
     metaData: msg.metaData,
   };
 
-  let conditions = (
+  const debtorConditions: ConditionDetails[] = [];
+  const creditorConditions: ConditionDetails[] = [];
+
+  (
     await Promise.all([
-      databaseManager._redisClient.getBuffer(
-        `entities/${request.DataCache.cdtrId}`,
-      ),
-      databaseManager._redisClient.getBuffer(
-        `entities/${request.DataCache.dbtrId}`,
-      ),
-      databaseManager._redisClient.getBuffer(
-        `accounts/${request.DataCache.cdtrAcctId}`,
-      ),
-      databaseManager._redisClient.getBuffer(
-        `accounts/${request.DataCache.dbtrAcctId}`,
-      ),
+      databaseManager._redisClient.getBuffer(`entities/${request.DataCache.cdtrId}`),
+      databaseManager._redisClient.getBuffer(`accounts/${request.DataCache.cdtrAcctId}`),
+      databaseManager._redisClient.getBuffer(`entities/${request.DataCache.dbtrId}`),
+      databaseManager._redisClient.getBuffer(`accounts/${request.DataCache.dbtrAcctId}`),
     ])
-  )
-    .map((dec: Buffer) => {
-      if (dec && dec.length > 0) {
-        try {
-          const decode = decodeConditionsBuffer(dec);
-          return decode?.conditions;
-        } catch (err) {
-          loggerService.error('Could not decode a condition');
+  ).forEach((dec: Buffer | null, idx: number) => {
+    if (dec && dec.length > 0) {
+      try {
+        const decode = decodeConditionsBuffer(dec);
+        if (decode) {
+          if (idx <= 1) {
+            creditorConditions.push(...decode.conditions);
+          } else {
+            debtorConditions.push(...decode.conditions);
+          }
         }
+      } catch (err) {
+        loggerService.error('Could not decode a condition');
       }
-      return null;
-    })
-    .filter((x) => x)
-    .flat();
-
-  const transactionDate = new Date(
-    request.transaction.FIToFIPmtSts.GrpHdr.CreDtTm,
-  );
-
-  // Filter in relevant dates
-  conditions = conditions.filter((cond) => {
-    return (
-      (!cond!.xprtnDtTm || new Date(cond!.xprtnDtTm) > transactionDate) &&
-      new Date(cond!.incptnDtTm) <= transactionDate
-    );
+    }
   });
 
-  // Filter out conditions not fit for transaction type
-  conditions = conditions.filter((cond) =>
-    cond?.prsptvs.some((p) => {
-      return p.evtTp.some((evt) => {
-        return evt === request.transaction.TxTp || evt === 'all';
-      });
-    }),
-  );
+  const transactionDate = new Date(request.transaction.FIToFIPmtSts.GrpHdr.CreDtTm);
 
-  //Determine outcome and calculate duration
-  const ruleResult = await determineOutcome(
-    conditions as ConditionDetails[],
-    request,
-  );
+  const validConditions = sanitizeConditions(creditorConditions, debtorConditions, transactionDate, request.transaction.TxTp);
+
+  // Determine outcome and calculate duration
+  const ruleResult = determineOutcome(validConditions, request);
   ruleResult.prcgTm = CalculateDuration(startTime);
 
   try {
     await server.handleResponse({ ...request, ruleResult });
   } catch (error) {
     const failMessage = 'Failed to send to Typology Processor.';
-    loggerService.error(
-      failMessage,
-      error,
-      `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
-      configuration.functionName,
-    );
+    loggerService.error(failMessage, error, `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`, configuration.functionName);
   }
 };
 
-export const determineOutcome = async (
-  conditions: ConditionDetails[],
-  request: object,
-): Promise<RuleResult> => {
+const sanitizeConditions = (
+  creditorConditions: ConditionDetails[],
+  debtorConditions: ConditionDetails[],
+  transactionDate: Date,
+  TxTp: string,
+): string[] => {
+  const debtorPerspectiveList: string[] = ['governed_as_debtor_by', 'governed_as_debtor_account_by'];
+  const creditorPerspectiveList: string[] = ['governed_as_creditor_by', 'governed_as_creditor_account_by'];
+
+  const eventTypes = new Set([TxTp, 'all']);
+
+  const sanitizedCreditorConditions = creditorConditions
+    .filter((cond) => {
+      // Time window relevant
+      const expireDate = cond.xprtnDtTm ? new Date(cond.xprtnDtTm) : null;
+      const createdDate = new Date(cond.incptnDtTm);
+
+      const isAfterCreation = transactionDate >= createdDate;
+      const isNotExpired = expireDate === null || transactionDate <= expireDate;
+
+      return isAfterCreation && isNotExpired;
+    })
+    .flatMap((cond) =>
+      // Perspective matches creditor
+      // Event matches request TxTp
+      cond.prsptvs.flatMap((p) => {
+        if (creditorPerspectiveList.includes(p.prsptv) && p.evtTp.some((ev) => eventTypes.has(ev))) {
+          return cond.condTp;
+        }
+        return [];
+      }),
+    );
+
+  const sanitizedDebtorConditions = debtorConditions
+    .filter((cond) => {
+      // Time window relevant
+      const expireDate = cond.xprtnDtTm ? new Date(cond.xprtnDtTm) : null;
+      const createdDate = new Date(cond.incptnDtTm);
+
+      const isAfterCreation = transactionDate >= createdDate;
+      const isNotExpired = expireDate === null || transactionDate <= expireDate;
+
+      return isAfterCreation && isNotExpired;
+    })
+    .flatMap((cond) =>
+      // Perspective matches debtor
+      // Event matches request TxTp
+      cond.prsptvs.flatMap((p) => {
+        if (debtorPerspectiveList.includes(p.prsptv) && p.evtTp.some((ev) => eventTypes.has(ev))) {
+          return cond.condTp;
+        }
+        return [];
+      }),
+    );
+
+  return [...sanitizedCreditorConditions, ...sanitizedDebtorConditions];
+};
+
+const determineOutcome = (conditions: string[], request: object): RuleResult => {
   const ruleResult: RuleResult = {
     id: `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
     cfg: 'none',
@@ -101,37 +125,28 @@ export const determineOutcome = async (
     prcgTm: 0,
   };
 
-  if (
-    conditions.some(
-      (cond) =>
-        cond.condTp === 'non-overridable-block' ||
-        cond.condTp === 'overridable-block',
-    )
-  ) {
+  if (conditions.length === 0) return ruleResult;
+
+  if (conditions.some((cond) => cond === 'non-overridable-block' || cond === 'overridable-block')) {
     ruleResult.subRuleRef = 'block';
   }
 
-  if (
-    conditions.some((cond) => cond.condTp === 'override') &&
-    !conditions.some((cond) => cond.condTp === 'non-overridable-block')
-  ) {
+  if (conditions.some((cond) => cond === 'override') && !conditions.some((cond) => cond === 'non-overridable-block')) {
     ruleResult.subRuleRef = 'override';
   }
 
   if (!configuration.SUPPRESS_ALERTS && ruleResult.subRuleRef === 'block') {
-    server
-      .handleResponse({ ...request, ruleResult }, [
-        configuration.INTERDICTION_PRODUCER,
-      ])
-      .catch((error) => {
-        loggerService.error(
-          `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
-          error as Error,
-          ruleResult.id,
-          configuration.functionName,
-        );
-      });
+    server.handleResponse({ ...request, ruleResult }, [configuration.INTERDICTION_PRODUCER]).catch((error: unknown) => {
+      loggerService.error(
+        `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
+        error as Error,
+        ruleResult.id,
+        configuration.functionName,
+      );
+    });
   }
 
   return ruleResult;
 };
+
+export { determineOutcome, sanitizeConditions, handleTransaction };

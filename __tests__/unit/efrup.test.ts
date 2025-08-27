@@ -257,6 +257,7 @@ describe('Event Flow', () => {
           prcgTm: 0,
           subRuleRef: 'none',
         };
+        
 
         await handleTransaction(req);
         expect(responseSpy).toHaveBeenCalledTimes(1);

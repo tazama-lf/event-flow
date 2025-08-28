@@ -32,8 +32,8 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@tazama-lf/frms-coe-lib": "5.1.1",
-    "@tazama-lf/frms-coe-startup-lib": "2.4.1"
+    "@tazama-lf/frms-coe-lib": "6.0.0-rc.3",
+    "@tazama-lf/frms-coe-startup-lib": "2.4.0-rc.4"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.5.0",

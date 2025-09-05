@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as calc from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { createConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
-import { Condition } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/Condition';
+import { Condition } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/EntityConditionEdge';
 import {
   AccountConditionResponse,
   EntityConditionResponse,
@@ -17,6 +17,26 @@ import {
 import { handleTransaction, sanitizeConditions } from '../../src/logic.service';
 
 jest.mock('@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg');
+
+jest.mock('@tazama-lf/frms-coe-lib/lib/services/dbManager', () => ({
+  CreateStorageManager: jest.fn().mockReturnValue({
+    db: {
+      getNetworkMap: jest.fn(),
+      _redisClient: { getBuffer: jest.fn() },
+      isReadyCheck: jest.fn().mockReturnValue({ nodeEnv: 'test' }),
+    },
+  }),
+}));
+
+jest.mock('@tazama-lf/frms-coe-startup-lib/lib/interfaces/iStartupConfig', () => ({
+  startupConfig: {
+    startupType: 'nats',
+    consumerStreamName: 'consumer',
+    serverUrl: 'server',
+    producerStreamName: 'producer',
+    functionName: 'producer',
+  },
+}));
 
 const DATE = {
   NOW: new Date().toISOString(),

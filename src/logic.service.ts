@@ -1,93 +1,11 @@
 import { CalculateDuration } from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
-import type { RuleRequest, RuleResult, Pacs002 } from '@tazama-lf/frms-coe-lib/lib/interfaces';
+import type { RuleRequest, RuleResult } from '@tazama-lf/frms-coe-lib/lib/interfaces';
 import type { ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
+import { databaseManager, loggerService, server } from '.';
+import { configuration } from './';
 
-// Constants for magic numbers
-const BUFFER_MIN_LENGTH = 0;
-const CREDITOR_INDEX_LIMIT = 1;
-const INITIAL_PROCESSING_TIME = 0;
-
-// Dependency interfaces for injection
-interface Dependencies {
-  databaseManager: {
-    _redisClient: {
-      getBuffer: (key: string) => Promise<Buffer | null>;
-    };
-  };
-  loggerService: {
-    error: (message: string, error?: unknown, id?: string, functionName?: string) => void;
-  };
-  server: {
-    handleResponse: (response: object, subject?: string[]) => Promise<void>;
-  };
-  configuration: {
-    RULE_NAME: string;
-    RULE_VERSION: string;
-    INTERDICTION_DESTINATION: 'global' | 'tenant';
-    INTERDICTION_PRODUCER: string;
-    SUPPRESS_ALERTS: boolean;
-    functionName: string;
-  };
-}
-
-/**
- * Extracts tenantId from the transaction payload
- * @param transaction - The transaction object (should be Pacs002 with TenantId, but supports legacy formats)
- * @returns The tenantId or a default value if not found
- */
-const extractTenantId = (transaction: unknown): string => {
-  if (transaction === null || transaction === undefined) {
-    return 'default';
-  }
-
-  const txn = transaction as Record<string, unknown>;
-
-  // Primary: Direct TenantId (now required by Pacs002 interface)
-  if (typeof txn.TenantId === 'string' && txn.TenantId.trim() !== '') {
-    return txn.TenantId;
-  }
-
-  // Fallback: Case variation for legacy compatibility
-  if (typeof txn.tenantId === 'string' && txn.tenantId.trim() !== '') {
-    return txn.tenantId;
-  }
-
-  // Nested tenant ID properties (for legacy message formats)
-  const fiToFi = txn.FIToFIPmtSts as Record<string, unknown> | null | undefined;
-  if (fiToFi && typeof fiToFi === 'object') {
-    if (typeof fiToFi.TenantId === 'string' && fiToFi.TenantId.trim() !== '') {
-      return fiToFi.TenantId;
-    }
-    if (typeof fiToFi.tenantId === 'string' && fiToFi.tenantId.trim() !== '') {
-      return fiToFi.tenantId;
-    }
-  }
-
-  return 'default'; // fallback for backward compatibility
-};
-
-/**
- * Type-safe tenant extraction for properly formatted Pacs002 transactions
- * @param transaction - Properly typed Pacs002 transaction
- * @returns The tenantId from the transaction
- */
-const extractTenantIdFromPacs002 = (transaction: Pacs002): string =>
-  transaction.TenantId && transaction.TenantId.trim() !== '' ? transaction.TenantId : 'default';
-
-/**
- * Calculates the interdiction destination based on configuration and tenantId
- * @param tenantId - The tenant identifier
- * @param configuration - The configuration object
- * @returns The NATS subject for interdiction messages
- */
-const calculateInterdictionDestination = (tenantId: string, configuration: Dependencies['configuration']): string =>
-  configuration.INTERDICTION_DESTINATION === 'tenant'
-    ? `${configuration.INTERDICTION_PRODUCER}-${tenantId}`
-    : configuration.INTERDICTION_PRODUCER;
-
-const handleTransaction = async (req: unknown, dependencies: Dependencies): Promise<void> => {
-  const { databaseManager, loggerService, server, configuration } = dependencies;
+const handleTransaction = async (req: unknown): Promise<void> => {
   const startTime = process.hrtime.bigint();
   const msg = req as RuleRequest;
 
@@ -98,9 +16,7 @@ const handleTransaction = async (req: unknown, dependencies: Dependencies): Prom
     metaData: msg.metaData,
   };
 
-  // Extract tenant ID for multi-tenant isolation
-  const tenantId = extractTenantId(request.transaction);
-
+  const tenantId = request.transaction.TenantId;
   const debtorConditions: ConditionDetails[] = [];
   const creditorConditions: ConditionDetails[] = [];
 
@@ -112,11 +28,11 @@ const handleTransaction = async (req: unknown, dependencies: Dependencies): Prom
       databaseManager._redisClient.getBuffer(`accounts/${tenantId}/${request.DataCache.dbtrAcctId}`),
     ])
   ).forEach((dec: Buffer | null, idx: number) => {
-    if (dec && dec.length > BUFFER_MIN_LENGTH) {
+    if (dec && dec.length > 0) {
       try {
         const decode = decodeConditionsBuffer(dec);
         if (decode) {
-          if (idx <= CREDITOR_INDEX_LIMIT) {
+          if (idx <= 1) {
             creditorConditions.push(...decode.conditions);
           } else {
             debtorConditions.push(...decode.conditions);
@@ -133,7 +49,7 @@ const handleTransaction = async (req: unknown, dependencies: Dependencies): Prom
   const validConditions = sanitizeConditions(creditorConditions, debtorConditions, transactionDate, request.transaction.TxTp);
 
   // Determine outcome and calculate duration
-  const ruleResult = determineOutcome(validConditions, request, tenantId, dependencies);
+  const ruleResult = determineOutcome(validConditions, request, tenantId);
   ruleResult.prcgTm = CalculateDuration(startTime);
 
   try {
@@ -202,16 +118,16 @@ const sanitizeConditions = (
   return [...sanitizedCreditorConditions, ...sanitizedDebtorConditions];
 };
 
-const determineOutcome = (conditions: string[], request: object, tenantId: string, dependencies: Dependencies): RuleResult => {
-  const { configuration, server, loggerService } = dependencies;
+const determineOutcome = (conditions: string[], request: object, tenantId: string): RuleResult => {
   const ruleResult: RuleResult = {
     id: `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
     cfg: 'none',
     subRuleRef: 'none',
-    prcgTm: INITIAL_PROCESSING_TIME,
+    prcgTm: 0,
+    tenantId,
   };
 
-  if (conditions.length === BUFFER_MIN_LENGTH) return ruleResult;
+  if (conditions.length === 0) return ruleResult;
 
   if (conditions.some((cond) => cond === 'non-overridable-block' || cond === 'overridable-block')) {
     ruleResult.subRuleRef = 'block';
@@ -222,7 +138,11 @@ const determineOutcome = (conditions: string[], request: object, tenantId: strin
   }
 
   if (!configuration.SUPPRESS_ALERTS && ruleResult.subRuleRef === 'block') {
-    const interdictionDestination = calculateInterdictionDestination(tenantId, configuration);
+    const interdictionDestination =
+      configuration.INTERDICTION_DESTINATION === 'tenant'
+        ? `${configuration.INTERDICTION_PRODUCER}-${tenantId}`
+        : configuration.INTERDICTION_PRODUCER;
+
     server.handleResponse({ ...request, ruleResult }, [interdictionDestination]).catch((error: unknown) => {
       loggerService.error(
         `Error while sending Event Flow Rule Processor result to ${interdictionDestination}`,
@@ -236,40 +156,4 @@ const determineOutcome = (conditions: string[], request: object, tenantId: strin
   return ruleResult;
 };
 
-// Factory function to create service with injected dependencies
-const createEventFlowService = (
-  dependencies: Dependencies,
-): {
-  handleTransaction: (req: unknown) => Promise<void>;
-  determineOutcome: (conditions: string[], request: object, tenantId: string) => RuleResult;
-  calculateInterdictionDestination: (tenantId: string) => string;
-  sanitizeConditions: typeof sanitizeConditions;
-  extractTenantId: typeof extractTenantId;
-  extractTenantIdFromPacs002: typeof extractTenantIdFromPacs002;
-} => ({
-  handleTransaction: async (req: unknown): Promise<void> => {
-    await handleTransaction(req, dependencies);
-  },
-  determineOutcome: (conditions: string[], request: object, tenantId: string): RuleResult =>
-    determineOutcome(conditions, request, tenantId, dependencies),
-  calculateInterdictionDestination: (tenantId: string): string => calculateInterdictionDestination(tenantId, dependencies.configuration),
-  sanitizeConditions,
-  extractTenantId,
-  extractTenantIdFromPacs002,
-});
-
-// Export types and functions
-export type { Dependencies };
-
-export {
-  // Dependency injection approach
-  createEventFlowService,
-
-  // Individual functions (now require dependencies for some)
-  handleTransaction,
-  determineOutcome,
-  sanitizeConditions,
-  extractTenantId,
-  extractTenantIdFromPacs002,
-  calculateInterdictionDestination,
-};
+export { determineOutcome, sanitizeConditions, handleTransaction };

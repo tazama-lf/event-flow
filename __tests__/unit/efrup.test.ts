@@ -15,28 +15,12 @@ import {
   server,
 } from '../../src';
 import { 
-  handleTransaction as handleTransactionCore, 
-  sanitizeConditions, 
-  extractTenantId, 
-  extractTenantIdFromPacs002, 
-  calculateInterdictionDestination,
-  createEventFlowService,
-  type Dependencies
+  handleTransaction, 
+  sanitizeConditions
 } from '../../src/logic.service';
 
 jest.mock('@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg');
 
-// Create wrapper functions for tests that provide dependencies dynamically
-const handleTransaction = async (req: unknown): Promise<void> => {
-  // Create dependencies dynamically to use current test mocks
-  const mockDependencies: Dependencies = {
-    databaseManager,
-    loggerService,
-    server,
-    configuration,
-  };
-  return handleTransactionCore(req, mockDependencies);
-};
 
 const DATE = {
   NOW: new Date().toISOString(),
@@ -58,6 +42,7 @@ const getMockRequest = () => {
   return {
     transaction: {
       TxTp: 'pacs.002.001.12',
+      TenantId: 'test-tenant',
       FIToFIPmtSts: {
         GrpHdr: {
           MsgId: crypto.randomUUID().replaceAll('-', ''),
@@ -256,6 +241,7 @@ describe('Event Flow', () => {
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'none',
+          tenantId: 'test-tenant',
         };
         
 
@@ -939,6 +925,7 @@ describe('Event Flow', () => {
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'block',
+          tenantId: 'test-tenant',
         };
 
         await handleTransaction(req);
@@ -999,6 +986,7 @@ describe('Event Flow', () => {
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'block',
+          tenantId: 'test-tenant',
         };
 
         await handleTransaction(req);
@@ -1060,6 +1048,7 @@ describe('Event Flow', () => {
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'override',
+          tenantId: 'test-tenant',
         };
 
         await handleTransaction(req);
@@ -1119,6 +1108,7 @@ describe('Event Flow', () => {
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'none',
+          tenantId: 'test-tenant',
         };
 
         await handleTransaction(req);
@@ -1175,6 +1165,7 @@ describe('Event Flow', () => {
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'none',
+          tenantId: 'test-tenant',
         };
 
         await handleTransaction(req);
@@ -1233,6 +1224,7 @@ describe('Event Flow', () => {
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'block',
+          tenantId: 'test-tenant',
         };
 
         await handleTransaction(req);
@@ -1264,11 +1256,9 @@ describe('Event Flow', () => {
         .spyOn(databaseManager._redisClient, 'getBuffer')
         .mockImplementationOnce(async (_key: any) => {
           return new Promise((resolve, _reject) => {
-            const corruptedBuffer = createConditionsBuffer(
-              entityConditions,
-            ) as Buffer;
-            corruptedBuffer[0] = Math.floor(Math.random() * 256);
-            resolve(corruptedBuffer);
+            // Create a completely invalid buffer that will definitely fail to decode
+            const invalidBuffer = Buffer.from([255, 255, 255, 255, 255]);
+            resolve(invalidBuffer);
           });
         })
         .mockImplementationOnce(async (_key: any) => {
@@ -1294,6 +1284,7 @@ describe('Event Flow', () => {
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
         subRuleRef: 'none',
+        tenantId: 'test-tenant',
       };
 
       await handleTransaction(req);
@@ -1366,6 +1357,7 @@ describe('Event Flow', () => {
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
         subRuleRef: 'block',
+        tenantId: 'test-tenant',
       };
 
       await handleTransaction(req);
@@ -1431,6 +1423,7 @@ describe('Event Flow', () => {
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
         subRuleRef: 'override',
+        tenantId: 'test-tenant',
       };
 
       await handleTransaction(req);
@@ -1449,141 +1442,7 @@ describe('Event Flow', () => {
     });
   });
 
-  describe('Tenant Extraction Tests', () => {
-    it('should return default for null transaction', () => {
-      const result = extractTenantId(null);
-      expect(result).toBe('default');
-    });
 
-    it('should return default for undefined transaction', () => {
-      const result = extractTenantId(undefined);
-      expect(result).toBe('default');
-    });
-
-    it('should extract TenantId from root level', () => {
-      const transaction = { TenantId: 'tenant123' };
-      const result = extractTenantId(transaction);
-      expect(result).toBe('tenant123');
-    });
-
-    it('should extract tenantId from root level', () => {
-      const transaction = { tenantId: 'tenant456' };
-      const result = extractTenantId(transaction);
-      expect(result).toBe('tenant456');
-    });
-
-    it('should extract TenantId from FIToFIPmtSts', () => {
-      const transaction = { 
-        FIToFIPmtSts: { TenantId: 'nested123' } 
-      };
-      const result = extractTenantId(transaction);
-      expect(result).toBe('nested123');
-    });
-
-    it('should extract tenantId from FIToFIPmtSts', () => {
-      const transaction = { 
-        FIToFIPmtSts: { tenantId: 'nested456' } 
-      };
-      const result = extractTenantId(transaction);
-      expect(result).toBe('nested456');
-    });
-
-    it('should return default when no tenantId found', () => {
-      const transaction = { 
-        someOtherProperty: 'value',
-        FIToFIPmtSts: { someProperty: 'value' }
-      };
-      const result = extractTenantId(transaction);
-      expect(result).toBe('default');
-    });
-
-    it('should return default when FIToFIPmtSts is null', () => {
-      const transaction = { 
-        FIToFIPmtSts: null
-      };
-      const result = extractTenantId(transaction);
-      expect(result).toBe('default');
-    });
-
-    it('should handle empty string tenantId and return default', () => {
-      const transaction = { TenantId: '' };
-      const result = extractTenantId(transaction);
-      expect(result).toBe('default');
-    });
-
-    it('should handle whitespace-only tenantId and return default', () => {
-      const transaction = { TenantId: '   ' };
-      const result = extractTenantId(transaction);
-      expect(result).toBe('default');
-    });
-  });
-
-  describe('Type-Safe Tenant Extraction Tests', () => {
-    it('should extract tenantId from properly typed Pacs002 transaction', () => {
-      const pacs002Transaction = {
-        TxTp: 'pacs.002.001.12',
-        TenantId: 'bank-alpha',
-        FIToFIPmtSts: {
-          GrpHdr: { MsgId: 'test', CreDtTm: new Date().toISOString() },
-          TxInfAndSts: {} as any
-        }
-      };
-      const result = extractTenantIdFromPacs002(pacs002Transaction);
-      expect(result).toBe('bank-alpha');
-    });
-
-    it('should return default for empty tenantId in Pacs002', () => {
-      const pacs002Transaction = {
-        TxTp: 'pacs.002.001.12',
-        TenantId: '',
-        FIToFIPmtSts: {
-          GrpHdr: { MsgId: 'test', CreDtTm: new Date().toISOString() },
-          TxInfAndSts: {} as any
-        }
-      };
-      const result = extractTenantIdFromPacs002(pacs002Transaction);
-      expect(result).toBe('default');
-    });
-
-    it('should return default for whitespace tenantId in Pacs002', () => {
-      const pacs002Transaction = {
-        TxTp: 'pacs.002.001.12',
-        TenantId: '   ',
-        FIToFIPmtSts: {
-          GrpHdr: { MsgId: 'test', CreDtTm: new Date().toISOString() },
-          TxInfAndSts: {} as any
-        }
-      };
-      const result = extractTenantIdFromPacs002(pacs002Transaction);
-      expect(result).toBe('default');
-    });
-  });
-
-  describe('Interdiction Destination Tests', () => {
-    beforeEach(() => {
-      // Reset configuration to default
-      configuration.INTERDICTION_DESTINATION = 'global';
-      configuration.INTERDICTION_PRODUCER = 'interdiction-service';
-    });
-
-    it('should return global destination when mode is global', () => {
-      configuration.INTERDICTION_DESTINATION = 'global';
-      const result = calculateInterdictionDestination('tenant123', configuration);
-      expect(result).toBe('interdiction-service');
-    });
-
-    it('should return tenant-specific destination when mode is tenant', () => {
-      configuration.INTERDICTION_DESTINATION = 'tenant';
-      const result = calculateInterdictionDestination('tenant123', configuration);
-      expect(result).toBe('interdiction-service-tenant123');
-    });
-
-    it('should return global destination when mode is global', () => {
-      configuration.INTERDICTION_DESTINATION = 'global';
-      const result = calculateInterdictionDestination('tenant456', configuration);
-      expect(result).toBe('interdiction-service');
-    });
-  });
 
   describe('Multi-Tenant Integration Tests', () => {
     let responseSpy: jest.SpyInstance;
@@ -1623,7 +1482,7 @@ describe('Event Flow', () => {
       expect(getBufferSpy).toHaveBeenCalledTimes(4);
     });
 
-    it('should use default tenant when no tenantId provided', async () => {
+    it('should use undefined tenant when no tenantId provided', async () => {
       const req = getMockRequest();
       // Remove any tenant ID properties
       delete (req.transaction as any).TenantId;
@@ -1632,8 +1491,8 @@ describe('Event Flow', () => {
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
         .mockImplementation(async (key: any) => {
-          // Verify default tenant keys are being used
-          expect(key).toMatch(/^(entities|accounts)\/default\//);
+          // Verify undefined tenant keys are being used
+          expect(key).toMatch(/^(entities|accounts)\/undefined\//);
           return new Promise((resolve, _reject) => {
             resolve(Buffer.from(''));
           });
@@ -1683,162 +1542,5 @@ describe('Event Flow', () => {
     });
   });
 
-  describe('Factory Pattern Tests', () => {
-    it('should create event flow service with dependency injection', () => {
-      const mockDependencies: Dependencies = {
-        databaseManager,
-        loggerService,
-        server,
-        configuration,
-      };
 
-      const service = createEventFlowService(mockDependencies);
-
-      expect(service).toBeDefined();
-      expect(typeof service.handleTransaction).toBe('function');
-      expect(typeof service.determineOutcome).toBe('function');
-      expect(typeof service.calculateInterdictionDestination).toBe('function');
-      expect(typeof service.sanitizeConditions).toBe('function');
-      expect(typeof service.extractTenantId).toBe('function');
-      expect(typeof service.extractTenantIdFromPacs002).toBe('function');
-    });
-
-    it('should call injected dependencies when using factory service', () => {
-      const mockDependencies: Dependencies = {
-        databaseManager,
-        loggerService,
-        server,
-        configuration,
-      };
-
-      const service = createEventFlowService(mockDependencies);
-      const tenantId = service.extractTenantId({ TenantId: 'test-tenant' });
-      
-      expect(tenantId).toBe('test-tenant');
-    });
-
-    it('should use factory determineOutcome with dependency injection', () => {
-      const mockDependencies: Dependencies = {
-        databaseManager,
-        loggerService,
-        server,
-        configuration,
-      };
-
-      const service = createEventFlowService(mockDependencies);
-      const mockRequest = getMockRequest();
-      const conditions = ['non-overridable-block'];
-      
-      const result = service.determineOutcome(conditions, mockRequest, 'test-tenant');
-      
-      expect(result).toBeDefined();
-      expect(result.subRuleRef).toBe('block');
-      expect(result.id).toBe(`${configuration.RULE_NAME}@${configuration.RULE_VERSION}`);
-    });
-
-    it('should use factory calculateInterdictionDestination with dependency injection', () => {
-      const mockDependencies: Dependencies = {
-        databaseManager,
-        loggerService,
-        server,
-        configuration,
-      };
-      
-      // Test global destination
-      configuration.INTERDICTION_DESTINATION = 'global';
-      const service = createEventFlowService(mockDependencies);
-      const globalResult = service.calculateInterdictionDestination('test-tenant');
-      expect(globalResult).toBe('interdiction-service');
-
-      // Test tenant destination
-      configuration.INTERDICTION_DESTINATION = 'tenant';
-      const service2 = createEventFlowService(mockDependencies);
-      const tenantResult = service2.calculateInterdictionDestination('test-tenant');
-      expect(tenantResult).toBe('interdiction-service-test-tenant');
-    });
-
-    it('should use factory sanitizeConditions function', () => {
-      const mockDependencies: Dependencies = {
-        databaseManager,
-        loggerService,
-        server,
-        configuration,
-      };
-
-      const service = createEventFlowService(mockDependencies);
-      const creditorConditions = getMockEntityCondition().conditions;
-      const debtorConditions = getMockAccountCondition().conditions;
-      
-      // Set up conditions to be valid
-      creditorConditions[0].xprtnDtTm = DATE.NEXTWEEK;
-      debtorConditions[0].xprtnDtTm = DATE.NEXTWEEK;
-      
-      const result = service.sanitizeConditions(
-        creditorConditions,
-        debtorConditions,
-        new Date(DATE.NOW),
-        'pacs.002.001.12'
-      );
-      
-      expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBeGreaterThan(0);
-    });
-
-    it('should use factory extractTenantIdFromPacs002 function', () => {
-      const mockDependencies: Dependencies = {
-        databaseManager,
-        loggerService,
-        server,
-        configuration,
-      };
-
-      const service = createEventFlowService(mockDependencies);
-      const pacs002Transaction = {
-        TxTp: 'pacs.002.001.12',
-        TenantId: 'bank-factory-test',
-        FIToFIPmtSts: {
-          GrpHdr: { MsgId: 'test', CreDtTm: new Date().toISOString() },
-          TxInfAndSts: {} as any
-        }
-      };
-      
-      const result = service.extractTenantIdFromPacs002(pacs002Transaction);
-      expect(result).toBe('bank-factory-test');
-    });
-
-    it('should use factory handleTransaction with async dependency injection', async () => {
-      const mockDependencies: Dependencies = {
-        databaseManager,
-        loggerService,
-        server,
-        configuration,
-      };
-
-      getBufferSpy = jest
-        .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementation(async (_key: any) => {
-          return new Promise((resolve, _reject) => {
-            resolve(Buffer.from(''));
-          });
-        });
-
-      const mockResponseSpy = jest
-        .spyOn(server, 'handleResponse')
-        .mockImplementation((resp: any, _subject: string[] | undefined): any => {
-          return new Promise((resolve, _reject) => {
-            resolve(resp);
-          });
-        });
-
-      const service = createEventFlowService(mockDependencies);
-      const mockRequest = getMockRequest();
-      
-      // This should work without throwing errors
-      await service.handleTransaction(mockRequest);
-      
-      expect(mockResponseSpy).toHaveBeenCalledTimes(1);
-      getBufferSpy.mockRestore();
-      mockResponseSpy.mockRestore();
-    });
-  });
 });

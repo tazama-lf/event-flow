@@ -3,7 +3,7 @@ import { type DatabaseManagerInstance, LoggerService } from '@tazama-lf/frms-coe
 import { type IStartupService, StartupFactory } from '@tazama-lf/frms-coe-startup-lib';
 import cluster from 'node:cluster';
 import os from 'node:os';
-import { handleTransaction as handleTransactionCore, type Dependencies } from './logic.service';
+import { handleTransaction } from './logic.service';
 import { validateProcessorConfig } from '@tazama-lf/frms-coe-lib/lib/config/processor.config';
 import { CreateStorageManager } from '@tazama-lf/frms-coe-lib/lib/services/dbManager';
 import { Database } from '@tazama-lf/frms-coe-lib/lib/config/database.config';
@@ -17,19 +17,6 @@ const loggerService: LoggerService = new LoggerService(configuration);
 let server: IStartupService;
 let databaseManager: DatabaseManagerInstance<Configuration>;
 const logContext = 'startup';
-
-// Create the dependencies object for dependency injection
-const getDependencies = (): Dependencies => ({
-  databaseManager,
-  loggerService,
-  server,
-  configuration,
-});
-
-// Create a wrapper function that provides dependencies to handleTransaction
-const handleTransaction = async (req: unknown): Promise<void> => {
-  await handleTransactionCore(req, getDependencies());
-};
 
 export const initializeDB = async (): Promise<void> => {
   const auth = configuration.nodeEnv === 'production';

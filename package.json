@@ -32,7 +32,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@tazama-lf/frms-coe-lib": "6.0.0-rc.6",
+    "@tazama-lf/frms-coe-lib": "6.0.0-rc.9",
     "@tazama-lf/frms-coe-startup-lib": "3.0.0-rc.1"
   },
   "devDependencies": {

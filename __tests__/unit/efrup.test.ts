@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as calc from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { createConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
+import { RuleResult } from '@tazama-lf/frms-coe-lib/lib/interfaces';
 import { Condition } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/Condition';
 import {
   AccountConditionResponse,
@@ -14,8 +15,8 @@ import {
   runServer,
   server,
 } from '../../src';
-import { 
-  handleTransaction, 
+import {
+  handleTransaction,
   sanitizeConditions
 } from '../../src/logic.service';
 
@@ -236,12 +237,13 @@ describe('Event Flow', () => {
             });
           });
 
-        const ruleRes = {
+        const ruleRes: RuleResult = {
           cfg: 'none',
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'none',
           tenantId: 'test-tenant',
+          indpdntVarbl: 0
         };
         
 
@@ -920,12 +922,13 @@ describe('Event Flow', () => {
             });
           });
 
-        const expectedRuleRes = {
+        const expectedRuleRes: RuleResult = {
           cfg: 'none',
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'block',
           tenantId: 'test-tenant',
+          indpdntVarbl: 0
         };
 
         await handleTransaction(req);
@@ -981,12 +984,13 @@ describe('Event Flow', () => {
             });
           });
 
-        const expectedRuleRes = {
+        const expectedRuleRes: RuleResult = {
           cfg: 'none',
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'block',
           tenantId: 'test-tenant',
+          indpdntVarbl: 0
         };
 
         await handleTransaction(req);
@@ -1043,12 +1047,13 @@ describe('Event Flow', () => {
             });
           });
 
-        const expectedRuleRes = {
+        const expectedRuleRes: RuleResult = {
           cfg: 'none',
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'override',
           tenantId: 'test-tenant',
+          indpdntVarbl: 0
         };
 
         await handleTransaction(req);
@@ -1103,12 +1108,13 @@ describe('Event Flow', () => {
             });
           });
 
-        const expectedRuleRes = {
+        const expectedRuleRes: RuleResult = {
           cfg: 'none',
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'none',
           tenantId: 'test-tenant',
+          indpdntVarbl: 0
         };
 
         await handleTransaction(req);
@@ -1160,12 +1166,13 @@ describe('Event Flow', () => {
             });
           });
 
-        const expectedRuleRes = {
+        const expectedRuleRes: RuleResult = {
           cfg: 'none',
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'none',
           tenantId: 'test-tenant',
+          indpdntVarbl: 0
         };
 
         await handleTransaction(req);
@@ -1219,12 +1226,13 @@ describe('Event Flow', () => {
             });
           });
 
-        const expectedRuleRes = {
+        const expectedRuleRes: RuleResult = {
           cfg: 'none',
           id: 'EFRuP@1.0.0',
           prcgTm: 0,
           subRuleRef: 'block',
           tenantId: 'test-tenant',
+          indpdntVarbl: 0
         };
 
         await handleTransaction(req);
@@ -1279,12 +1287,13 @@ describe('Event Flow', () => {
 
       const logSpy = jest.spyOn(loggerService, 'error');
 
-      const expectedRuleRes = {
+      const expectedRuleRes: RuleResult = {
         cfg: 'none',
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
         subRuleRef: 'none',
         tenantId: 'test-tenant',
+        indpdntVarbl: 0
       };
 
       await handleTransaction(req);
@@ -1352,12 +1361,13 @@ describe('Event Flow', () => {
           },
         );
 
-      const expectedRuleRes = {
+      const expectedRuleRes: RuleResult = {
         cfg: 'none',
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
         subRuleRef: 'block',
         tenantId: 'test-tenant',
+        indpdntVarbl: 0
       };
 
       await handleTransaction(req);
@@ -1418,12 +1428,13 @@ describe('Event Flow', () => {
         .spyOn(server, 'handleResponse')
         .mockRejectedValueOnce('BAD');
 
-      const expectedRuleRes = {
+      const expectedRuleRes: RuleResult = {
         cfg: 'none',
         id: 'EFRuP@1.0.0',
         prcgTm: 0,
         subRuleRef: 'override',
         tenantId: 'test-tenant',
+        indpdntVarbl: 0
       };
 
       await handleTransaction(req);

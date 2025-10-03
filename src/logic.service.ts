@@ -22,10 +22,10 @@ const handleTransaction = async (req: unknown): Promise<void> => {
 
   (
     await Promise.all([
-      databaseManager._redisClient.getBuffer(`entities/${tenantId}/${request.DataCache.cdtrId}`),
-      databaseManager._redisClient.getBuffer(`accounts/${tenantId}/${request.DataCache.cdtrAcctId}`),
-      databaseManager._redisClient.getBuffer(`entities/${tenantId}/${request.DataCache.dbtrId}`),
-      databaseManager._redisClient.getBuffer(`accounts/${tenantId}/${request.DataCache.dbtrAcctId}`),
+      databaseManager._redisClient.getBuffer(`entities/${request.DataCache.cdtrId}`),
+      databaseManager._redisClient.getBuffer(`accounts/${request.DataCache.cdtrAcctId}`),
+      databaseManager._redisClient.getBuffer(`entities/${request.DataCache.dbtrId}`),
+      databaseManager._redisClient.getBuffer(`accounts/${request.DataCache.dbtrAcctId}`),
     ])
   ).forEach((dec: Buffer | null, idx: number) => {
     if (dec && dec.length > 0) {

@@ -1471,28 +1471,7 @@ describe('Event Flow', () => {
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
         .mockImplementation(async (key: any) => {
-          // Verify tenant-specific keys are being used
-          expect(key).toMatch(/^(entities|accounts)\/custom-tenant\//);
-          return new Promise((resolve, _reject) => {
-            resolve(Buffer.from(''));
-          });
-        });
-
-      await handleTransaction(req);
-      expect(getBufferSpy).toHaveBeenCalledTimes(4);
-    });
-
-    it('should use undefined tenant when no tenantId provided', async () => {
-      const req = getMockRequest();
-      // Remove any tenant ID properties
-      delete (req.transaction as any).TenantId;
-      delete (req.transaction as any).tenantId;
-
-      getBufferSpy = jest
-        .spyOn(databaseManager._redisClient, 'getBuffer')
-        .mockImplementation(async (key: any) => {
-          // Verify undefined tenant keys are being used
-          expect(key).toMatch(/^(entities|accounts)\/undefined\//);
+          expect(key).toMatch(/^(entities|accounts)\//);
           return new Promise((resolve, _reject) => {
             resolve(Buffer.from(''));
           });

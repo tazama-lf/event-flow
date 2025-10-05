@@ -125,6 +125,7 @@ const determineOutcome = (conditions: string[], request: object, tenantId: strin
     subRuleRef: 'none',
     prcgTm: 0,
     tenantId,
+    indpdntVarbl: 0,
   };
 
   if (conditions.length === 0) return ruleResult;

@@ -21,6 +21,10 @@ export const additionalEnvironmentVariables: AdditionalConfig[] = [
     name: 'INTERDICTION_PRODUCER',
     type: 'string',
   },
+  {
+    name: 'INTERDICTION_DESTINATION',
+    type: 'string',
+  },
 ];
 
 export interface ExtendedConfig {
@@ -28,6 +32,7 @@ export interface ExtendedConfig {
   RULE_VERSION: string;
   SUPPRESS_ALERTS: boolean;
   INTERDICTION_PRODUCER: string;
+  INTERDICTION_DESTINATION: 'global' | 'tenant';
 }
 
 export type Databases = Required<Pick<ManagerConfig, 'configuration' | 'redisConfig'>>;

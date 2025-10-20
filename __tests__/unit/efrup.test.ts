@@ -1501,7 +1501,7 @@ describe('Event Flow', () => {
       getBufferSpy = jest
         .spyOn(databaseManager._redisClient, 'getBuffer')
         .mockImplementation(async (key: any) => {
-          expect(key).toMatch(/^(entities|accounts)\//);
+          expect(key).toMatch(/^custom-tenant:/);
           return new Promise((resolve, _reject) => {
             resolve(Buffer.from(''));
           });

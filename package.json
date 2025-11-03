@@ -1,6 +1,6 @@
 {
   "name": "event-flow",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "Event flow control processor for tazama",
   "keywords": [
     "tazama"
@@ -32,8 +32,8 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@tazama-lf/frms-coe-lib": "6.0.0-postgres.alpha.12",
-    "@tazama-lf/frms-coe-startup-lib": "3.0.0-rc.6"
+    "@tazama-lf/frms-coe-lib": "6.0.0",
+    "@tazama-lf/frms-coe-startup-lib": "3.0.0"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.5.0",

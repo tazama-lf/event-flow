@@ -25,7 +25,8 @@ process.env.DISTRIBUTED_CACHETTL = '300';
 process.env.DISTRIBUTED_CACHE_ENABLED = 'true';
 
 process.env.CONFIGURATION_DATABASE = 'configuration';
-process.env.CONFIGURATION_DATABASE_URL = 'tcp://0.0.0.0:8529';
+process.env.CONFIGURATION_DATABASE_HOST = 'testhost';
+process.env.CONFIGURATION_DATABASE_PORT = '5432';
 process.env.CONFIGURATION_DATABASE_USER = 'root';
 process.env.CONFIGURATION_DATABASE_PASSWORD = '';
 process.env.CONFIGURATION_DATABASE_CERT_PATH = '/usr/local/share/ca-certificates/ca-certificates.crt';
@@ -40,6 +41,7 @@ process.env.LOGSTASH_LEVEL = 'info';
 process.env.SERVER_URL = '0.0.0.0:4222';
 process.env.STARTUP_TYPE = 'nats';
 process.env.INTERDICTION_PRODUCER = 'interdiction-service';
+process.env.INTERDICTION_DESTINATION = 'global';
 process.env.SIDECAR_HOST = '';
 
 process.env.LOCAL_CACHETTL = '300';

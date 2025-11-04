@@ -16,15 +16,16 @@ const handleTransaction = async (req: unknown): Promise<void> => {
     metaData: msg.metaData,
   };
 
+  const tenantId = request.transaction.TenantId;
   const debtorConditions: ConditionDetails[] = [];
   const creditorConditions: ConditionDetails[] = [];
 
   (
     await Promise.all([
-      databaseManager._redisClient.getBuffer(`entities/${request.DataCache.cdtrId}`),
-      databaseManager._redisClient.getBuffer(`accounts/${request.DataCache.cdtrAcctId}`),
-      databaseManager._redisClient.getBuffer(`entities/${request.DataCache.dbtrId}`),
-      databaseManager._redisClient.getBuffer(`accounts/${request.DataCache.dbtrAcctId}`),
+      databaseManager._redisClient.getBuffer(`${tenantId}:${request.DataCache.cdtrId}`),
+      databaseManager._redisClient.getBuffer(`${tenantId}:${request.DataCache.cdtrAcctId}`),
+      databaseManager._redisClient.getBuffer(`${tenantId}:${request.DataCache.dbtrId}`),
+      databaseManager._redisClient.getBuffer(`${tenantId}:${request.DataCache.dbtrAcctId}`),
     ])
   ).forEach((dec: Buffer | null, idx: number) => {
     if (dec && dec.length > 0) {
@@ -48,7 +49,7 @@ const handleTransaction = async (req: unknown): Promise<void> => {
   const validConditions = sanitizeConditions(creditorConditions, debtorConditions, transactionDate, request.transaction.TxTp);
 
   // Determine outcome and calculate duration
-  const ruleResult = determineOutcome(validConditions, request);
+  const ruleResult = determineOutcome(validConditions, request, tenantId);
   ruleResult.prcgTm = CalculateDuration(startTime);
 
   try {
@@ -117,12 +118,14 @@ const sanitizeConditions = (
   return [...sanitizedCreditorConditions, ...sanitizedDebtorConditions];
 };
 
-const determineOutcome = (conditions: string[], request: object): RuleResult => {
+const determineOutcome = (conditions: string[], request: object, tenantId: string): RuleResult => {
   const ruleResult: RuleResult = {
     id: `${configuration.RULE_NAME}@${configuration.RULE_VERSION}`,
     cfg: 'none',
     subRuleRef: 'none',
     prcgTm: 0,
+    tenantId,
+    indpdntVarbl: 0,
   };
 
   if (conditions.length === 0) return ruleResult;
@@ -136,9 +139,14 @@ const determineOutcome = (conditions: string[], request: object): RuleResult => 
   }
 
   if (!configuration.SUPPRESS_ALERTS && ruleResult.subRuleRef === 'block') {
-    server.handleResponse({ ...request, ruleResult }, [configuration.INTERDICTION_PRODUCER]).catch((error: unknown) => {
+    const interdictionDestination =
+      configuration.INTERDICTION_DESTINATION === 'tenant'
+        ? `${configuration.INTERDICTION_PRODUCER}-${tenantId}`
+        : configuration.INTERDICTION_PRODUCER;
+
+    server.handleResponse({ ...request, ruleResult }, [interdictionDestination]).catch((error: unknown) => {
       loggerService.error(
-        `Error while sending Event Flow Rule Processor result to ${configuration.INTERDICTION_PRODUCER}`,
+        `Error while sending Event Flow Rule Processor result to ${interdictionDestination}`,
         error as Error,
         ruleResult.id,
         configuration.functionName,

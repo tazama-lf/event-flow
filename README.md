@@ -7,7 +7,7 @@ Specialized rule processor receives a message from the Event-Director and determ
 
 ### Services
 
-- [ArangoDB](https://arangodb.com/): Database Management
+- [PostgresQL](https://www.postgresql.org/): Database Management
 - [NATS](https://nats.io): Message queue
 - [Redis](https://redis.io): Redis
 
@@ -16,7 +16,7 @@ You also need NodeJS to be installed in your system. The current [LTS](https://n
 #### Setting Up
 
 ```sh
-git clone https://github.com/tazama/event-flow
+git clone https://github.com/tazama-lf/event-flow
 cd event-flow
 ```
 You then need to configure your environment: a [sample](.env.template) configuration file has been provided and you may adapt that to your environment. Copy it to `.env` and modify as needed:

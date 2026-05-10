@@ -1,6 +1,13 @@
 import { CalculateDuration } from '@tazama-lf/frms-coe-lib/lib/helpers/calculatePrcg';
 import { decodeConditionsBuffer } from '@tazama-lf/frms-coe-lib/lib/helpers/protobuf';
 import type { RuleRequest, RuleResult } from '@tazama-lf/frms-coe-lib/lib/interfaces';
+import {
+  isBaseMessageTransaction,
+  isPacs002Transaction,
+  isPacs008Transaction,
+  isPain001Transaction,
+  isPain013Transaction,
+} from '@tazama-lf/frms-coe-lib';
 import type { ConditionDetails } from '@tazama-lf/frms-coe-lib/lib/interfaces/event-flow/ConditionDetails';
 import { databaseManager, loggerService, server } from '.';
 import { configuration } from './';
@@ -44,7 +51,24 @@ const handleTransaction = async (req: unknown): Promise<void> => {
     }
   });
 
-  const transactionDate = new Date(request.transaction.FIToFIPmtSts.GrpHdr.CreDtTm);
+  let transactionDate: Date;
+  if (isPacs002Transaction(request.transaction)) {
+    transactionDate = new Date(request.transaction.FIToFIPmtSts.GrpHdr.CreDtTm);
+  } else if (isPacs008Transaction(request.transaction)) {
+    transactionDate = new Date(request.transaction.FIToFICstmrCdtTrf.GrpHdr.CreDtTm);
+  } else if (isPain001Transaction(request.transaction)) {
+    transactionDate = new Date(request.transaction.CstmrCdtTrfInitn.GrpHdr.CreDtTm);
+  } else if (isPain013Transaction(request.transaction)) {
+    transactionDate = new Date(request.transaction.CdtrPmtActvtnReq.GrpHdr.CreDtTm);
+  } else if (isBaseMessageTransaction(request.transaction)) {
+    if (!request.DataCache.creDtTm) {
+      loggerService.warn('Cannot determine transaction date.', configuration.functionName);
+    }
+    transactionDate = request.DataCache.creDtTm ? new Date(request.DataCache.creDtTm) : new Date();
+  } else {
+    loggerService.warn('Cannot determine transaction date from message - falling back to current time.', configuration.functionName);
+    transactionDate = new Date();
+  }
 
   const validConditions = sanitizeConditions(creditorConditions, debtorConditions, transactionDate, request.transaction.TxTp);
 

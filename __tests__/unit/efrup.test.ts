@@ -1551,5 +1551,142 @@ describe('Event Flow', () => {
     });
   });
 
+  describe('Transaction type routing', () => {
+    beforeEach(() => {
+      jest
+        .spyOn(databaseManager._redisClient, 'getBuffer')
+        .mockImplementation(async (_key: any) =>
+          new Promise((resolve) => resolve(Buffer.from(''))),
+        );
+    });
+
+    const baseDataCache = {
+      dbtrId: '1c7d62da33d347c693ad5231f9faecfb',
+      cdtrId: '17ea3b1b006440ce863d46a81f5129c0',
+      cdtrAcctId: '04b003069709403a9a365fe0173cf914',
+      dbtrAcctId: '8354f4d7af5547e2ade0f16c77af9a7c',
+      amt: { amt: 555.55, ccy: 'USD' },
+      creDtTm: DATE.NOW,
+    };
+
+    const baseNetworkMap = {
+      active: true,
+      cfg: '1.0.0',
+      messages: [],
+    };
+
+    it('should use CreDtTm from pacs.008 transaction', async () => {
+      const req = {
+        transaction: {
+          TxTp: 'pacs.008.001.10',
+          TenantId: 'test-tenant',
+          FIToFICstmrCdtTrf: {
+            GrpHdr: { MsgId: 'msg-001', CreDtTm: DATE.NOW },
+            CdtTrfTxInf: {},
+          },
+        },
+        networkMap: baseNetworkMap,
+        DataCache: baseDataCache,
+        metaData: { prcgTmDP: 0, prcgTmED: 0 },
+      };
+
+      await handleTransaction(req);
+      expect(responseSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should use CreDtTm from pain.001 transaction', async () => {
+      const req = {
+        transaction: {
+          TxTp: 'pain.001.001.11',
+          TenantId: 'test-tenant',
+          CstmrCdtTrfInitn: {
+            GrpHdr: { MsgId: 'msg-001', CreDtTm: DATE.NOW },
+            PmtInf: {},
+          },
+        },
+        networkMap: baseNetworkMap,
+        DataCache: baseDataCache,
+        metaData: { prcgTmDP: 0, prcgTmED: 0 },
+      };
+
+      await handleTransaction(req);
+      expect(responseSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should use CreDtTm from pain.013 transaction', async () => {
+      const req = {
+        transaction: {
+          TxTp: 'pain.013.001.09',
+          TenantId: 'test-tenant',
+          CdtrPmtActvtnReq: {
+            GrpHdr: { MsgId: 'msg-001', CreDtTm: DATE.NOW },
+            PmtInf: {},
+          },
+        },
+        networkMap: baseNetworkMap,
+        DataCache: baseDataCache,
+        metaData: { prcgTmDP: 0, prcgTmED: 0 },
+      };
+
+      await handleTransaction(req);
+      expect(responseSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should use DataCache.creDtTm for BaseMessage transaction', async () => {
+      const req = {
+        transaction: {
+          TxTp: 'custom-type',
+          TenantId: 'test-tenant',
+          MsgId: 'msg-001',
+          Payload: { data: 'test' },
+        },
+        networkMap: baseNetworkMap,
+        DataCache: baseDataCache,
+        metaData: { prcgTmDP: 0, prcgTmED: 0 },
+      };
+
+      await handleTransaction(req);
+      expect(responseSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should warn and fall back to current time for BaseMessage with no creDtTm', async () => {
+      const req = {
+        transaction: {
+          TxTp: 'custom-type',
+          TenantId: 'test-tenant',
+          MsgId: 'msg-001',
+          Payload: { data: 'test' },
+        },
+        networkMap: baseNetworkMap,
+        DataCache: { ...baseDataCache, creDtTm: undefined },
+        metaData: { prcgTmDP: 0, prcgTmED: 0 },
+      };
+
+      const warnSpy = jest.spyOn(loggerService, 'warn');
+
+      await handleTransaction(req);
+      expect(warnSpy).toHaveBeenCalledWith('Cannot determine transaction date.', expect.anything());
+      expect(responseSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should warn and fall back to current time for unsupported transaction type', async () => {
+      const req = {
+        transaction: { TxTp: 'unknown-type', TenantId: 'test-tenant' } as any,
+        networkMap: baseNetworkMap,
+        DataCache: baseDataCache,
+        metaData: { prcgTmDP: 0, prcgTmED: 0 },
+      };
+
+      const warnSpy = jest.spyOn(loggerService, 'warn');
+
+      await handleTransaction(req);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Cannot determine transaction date from message - falling back to current time.',
+        expect.anything(),
+      );
+      expect(responseSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
 
 });

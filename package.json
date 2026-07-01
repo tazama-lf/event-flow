@@ -1,6 +1,6 @@
 {
   "name": "event-flow",
-  "version": "4.0.0-rc.1",
+  "version": "4.0.0-rc.2",
   "description": "Event flow control processor for tazama",
   "keywords": [
     "tazama"
@@ -32,8 +32,12 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@tazama-lf/frms-coe-lib": "8.0.0-rc.3",
-    "@tazama-lf/frms-coe-startup-lib": "3.0.2-rc.5"
+    "@tazama-lf/frms-coe-lib": "8.2.0-rc.6",
+    "@tazama-lf/frms-coe-startup-lib": "3.1.0-rc.8"
+  },
+  "overrides": {
+    "uuid": "^11.1.1",
+    "@opentelemetry/core": "^2.8.0"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.5.0",

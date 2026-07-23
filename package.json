@@ -1,6 +1,6 @@
 {
   "name": "event-flow",
-  "version": "4.0.0-rc.2",
+  "version": "4.0.0",
   "description": "Event flow control processor for tazama",
   "keywords": [
     "tazama"
@@ -32,8 +32,8 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@tazama-lf/frms-coe-lib": "8.2.0-rc.6",
-    "@tazama-lf/frms-coe-startup-lib": "3.1.0-rc.9"
+    "@tazama-lf/frms-coe-lib": "8.2.0",
+    "@tazama-lf/frms-coe-startup-lib": "3.1.0"
   },
   "overrides": {
     "uuid": "^11.1.1",
